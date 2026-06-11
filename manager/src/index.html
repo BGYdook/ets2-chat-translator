@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ETS2 Chat Translator Manager</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="background-effects">
+      <div class="glow glow-1"></div>
+      <div class="glow glow-2"></div>
+      <div class="glow glow-3"></div>
+    </div>
+    
+    <main class="shell">
+      <header class="topbar glass-panel">
+        <div class="header-content">
+          <h1>ETS2 Translator <span class="accent">Manager</span></h1>
+          <p>安装插件 DLL，管理翻译配置。</p>
+        </div>
+        <div id="statusPill" class="pill">准备就绪</div>
+      </header>
+
+      <section class="panel glass-panel">
+        <div class="section-title">
+          <div class="title-with-icon">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>
+            <h2>欧卡 2 路径与安装</h2>
+          </div>
+          <span id="installState" class="status-badge">正在检查...</span>
+        </div>
+        <div class="path-row">
+          <label for="ets2Path">ETS2 安装目录</label>
+          <div class="input-group">
+            <input id="ets2Path" type="text" spellcheck="false" placeholder="等待识别..." />
+            <div class="btn-group">
+              <button id="detectBtn" class="secondary-btn">自动识别</button>
+              <button id="browseBtn" class="secondary-btn">浏览</button>
+            </div>
+          </div>
+        </div>
+        <div class="actions main-actions">
+          <button id="installBtn" class="primary-btn pulse-hover">安装 / 更新 DLL</button>
+          <button id="uninstallBtn" class="danger-btn">卸载 DLL</button>
+        </div>
+        <div id="pluginDir" class="hint"></div>
+      </section>
+
+      <section class="grid">
+        <div class="panel glass-panel form-section">
+          <div class="section-title">
+            <div class="title-with-icon">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+              <h2>翻译配置</h2>
+            </div>
+            <span class="sub-text">Provider 按配置顺序回退</span>
+          </div>
+
+          <div class="form-grid">
+            <div class="form-group">
+              <label>主翻译平台</label>
+              <div class="select-wrapper">
+                <select id="preset">
+                  <option value="anthropic">Anthropic 协议</option>
+                  <option value="openai">OpenAI 协议</option>
+                  <option value="deepl">DeepL</option>
+                  <option value="google-cloud">Google Cloud Translate</option>
+                  <option value="microsoft">Microsoft Translator</option>
+                  <option value="baidu">百度翻译</option>
+                  <option value="youdao">有道智云</option>
+                  <option value="libretranslate">LibreTranslate</option>
+                  <option value="free">仅免费兜底</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>目标语言</label>
+              <input id="targetLang" value="zh-CN" />
+            </div>
+
+            <div class="form-group">
+              <label>Workers</label>
+              <input id="workers" type="number" min="1" max="32" value="8" />
+            </div>
+
+            <div class="form-group">
+              <label>队列上限</label>
+              <input id="queueLimit" type="number" min="50" value="1000" />
+            </div>
+
+            <div class="form-group">
+              <label>缓存上限</label>
+              <input id="cacheLimit" type="number" min="100" value="1500" />
+            </div>
+
+            <div class="form-group">
+              <label>超时 (ms)</label>
+              <input id="timeoutMs" type="number" min="3000" value="10000" />
+            </div>
+
+            <div class="form-group">
+              <label>悬浮窗字体大小</label>
+              <div class="font-size-control">
+                <button type="button" id="fontSizeMinus" class="size-btn" title="减小">−</button>
+                <div class="size-display">
+                  <span id="fontSizeValue">18</span>
+                  <span class="size-unit">px</span>
+                </div>
+                <button type="button" id="fontSizePlus" class="size-btn" title="增大">+</button>
+                <input id="fontSize" type="hidden" value="18" />
+              </div>
+              <div class="size-presets">
+                <button type="button" class="preset-btn" data-size="14">小 14</button>
+                <button type="button" class="preset-btn" data-size="18">中 18</button>
+                <button type="button" class="preset-btn" data-size="22">大 22</button>
+                <button type="button" class="preset-btn" data-size="26">特大 26</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="llmFields" class="llm-fields glass-inset">
+            <h3 class="inset-title">Provider 配置</h3>
+            <div class="form-group">
+              <label>Provider 名称</label>
+              <input id="providerLabel" value="Anthropic" spellcheck="false" />
+            </div>
+            <div class="form-group">
+              <label>base_url</label>
+              <input id="baseUrl" value="https://api.anthropic.com/v1" spellcheck="false" />
+            </div>
+            <div class="form-group">
+              <label>API Key / App ID</label>
+              <input id="apiKey" type="password" spellcheck="false" placeholder="必填" />
+            </div>
+            <div class="form-group">
+              <label>API Secret</label>
+              <input id="apiSecret" type="password" spellcheck="false" placeholder="签名平台需要" />
+            </div>
+            <div class="form-group">
+              <label>模型</label>
+              <input id="model" value="claude-3-5-haiku-latest" spellcheck="false" />
+            </div>
+            <div class="form-group">
+              <label>源语言</label>
+              <input id="sourceLang" value="auto" spellcheck="false" />
+            </div>
+            <div class="form-group">
+              <label>兜底接口</label>
+              <div class="check-row">
+                <input id="enableFallbacks" type="checkbox" checked />
+                <span>启用 MyMemory / Andeer 回退</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="actions split">
+            <button id="loadConfigBtn" class="secondary-btn">读取已安装</button>
+            <button id="previewBtn" class="secondary-btn">刷新预览</button>
+            <button id="saveConfigBtn" class="primary-btn glow-btn">保存配置</button>
+          </div>
+        </div>
+
+        <div class="panel glass-panel preview-panel">
+          <div class="section-title">
+            <div class="title-with-icon">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+              <h2>配置预览</h2>
+            </div>
+            <span class="sub-text filename">config.json</span>
+          </div>
+          <div class="editor-container">
+            <textarea id="preview" spellcheck="false"></textarea>
+          </div>
+        </div>
+      </section>
+    </main>
+    <script src="./renderer.js"></script>
+  </body>
+</html>

@@ -1,0 +1,34 @@
+# Build output
+build/
+*.dll
+*.obj
+*.exp
+*.lib
+*.pdb
+*.ilk
+
+# IDE
+.vs/
+*.suo
+*.user
+*.sln
+*.vcxproj*
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+manager/node_modules/
+manager/dist/
+
+# Local runtime/config/logs
+HANDOFF.md
+*.log
+*.env
+*.local
+config.json
+settings.json
+ets2_chat_translator.json
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store

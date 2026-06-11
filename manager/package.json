@@ -1,0 +1,48 @@
+{
+  "name": "ets2-chat-translator-manager",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ETS2 Chat Translator desktop manager",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "set ELECTRON_RUN_AS_NODE=& electron .",
+    "dist": "electron-builder --win nsis --x64"
+  },
+  "devDependencies": {
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "local.ets2.chat.translator.manager",
+    "productName": "ETS2 Chat Translator Manager",
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../build/ets2_chat_translator.dll",
+        "to": "ets2_chat_translator.dll"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "ETS2-Chat-Translator-Manager-Setup-${version}.exe"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "ETS2 Chat Translator Manager",
+      "deleteAppDataOnUninstall": false
+    }
+  }
+}

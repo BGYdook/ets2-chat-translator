@@ -1,0 +1,473 @@
+#include "chat_panel.h"
+
+#include <algorithm>
+#include <windowsx.h>
+
+namespace
+{
+const wchar_t* kClass = L"ETS2TranslatorPanelV4Simple";
+const COLORREF cBack = RGB(9, 12, 18);
+const COLORREF cPanel = RGB(18, 23, 34);
+const COLORREF cCard = RGB(24, 30, 44);
+const COLORREF cCardAlt = RGB(28, 35, 50);
+const COLORREF cLine = RGB(52, 60, 78);
+const COLORREF cText = RGB(243, 244, 246);
+const COLORREF cDim = RGB(145, 158, 180);
+const COLORREF cName = RGB(16, 185, 129);
+const COLORREF cTime = RGB(125, 140, 165);
+const COLORREF cTrans = RGB(255, 215, 100);
+const COLORREF cWarn = RGB(239, 68, 68);
+const COLORREF cBlue = RGB(59, 130, 246);
+const COLORREF cCyan = RGB(34, 211, 238);
+
+void Fill(HDC dc, RECT r, COLORREF color)
+{
+    HBRUSH b = CreateSolidBrush(color);
+    FillRect(dc, &r, b);
+    DeleteObject(b);
+}
+
+void DrawTextLine(HDC dc, HFONT font, COLORREF color, const std::wstring& text, RECT r, UINT flags)
+{
+    HFONT old = (HFONT)SelectObject(dc, font);
+    SetTextColor(dc, color);
+    DrawTextW(dc, text.c_str(), -1, &r, flags | DT_NOPREFIX);
+    SelectObject(dc, old);
+}
+
+void RoundFill(HDC dc, RECT r, int radius, COLORREF color)
+{
+    HBRUSH brush = CreateSolidBrush(color);
+    HPEN pen = CreatePen(PS_SOLID, 1, color);
+    HGDIOBJ oldBrush = SelectObject(dc, brush);
+    HGDIOBJ oldPen = SelectObject(dc, pen);
+    RoundRect(dc, r.left, r.top, r.right, r.bottom, radius, radius);
+    SelectObject(dc, oldPen);
+    SelectObject(dc, oldBrush);
+    DeleteObject(pen);
+    DeleteObject(brush);
+}
+
+void StrokeRound(HDC dc, RECT r, int radius, COLORREF color)
+{
+    HBRUSH hollow = (HBRUSH)GetStockObject(HOLLOW_BRUSH);
+    HPEN pen = CreatePen(PS_SOLID, 1, color);
+    HGDIOBJ oldBrush = SelectObject(dc, hollow);
+    HGDIOBJ oldPen = SelectObject(dc, pen);
+    RoundRect(dc, r.left, r.top, r.right, r.bottom, radius, radius);
+    SelectObject(dc, oldPen);
+    SelectObject(dc, oldBrush);
+    DeleteObject(pen);
+}
+
+std::wstring CompactStatus(const std::wstring& status)
+{
+    if (status.empty()) return L"翻译引擎准备就绪";
+    return status;
+}
+}
+
+ChatPanel::ChatPanel()
+{
+}
+
+ChatPanel::~ChatPanel()
+{
+    Close();
+}
+
+bool ChatPanel::Open(HINSTANCE instance, const RuntimeConfig& runtime)
+{
+    instance_ = instance;
+    fontSize_ = (std::max)(12, (std::min)(28, runtime.fontSize));
+    rowH_ = fontSize_ + 12;
+    subRowH_ = fontSize_ + 9;
+    topBand_ = fontSize_ + 34;
+    statusBand_ = fontSize_ + 18;
+
+    WNDCLASSEXW wc{};
+    wc.cbSize = sizeof(wc);
+    wc.lpfnWndProc = ChatPanel::WindowProc;
+    wc.hInstance = instance_;
+    wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
+    wc.lpszClassName = kClass;
+    wc.style = CS_HREDRAW | CS_VREDRAW;
+    wc.hbrBackground = nullptr;
+    RegisterClassExW(&wc);
+
+    font_ = CreateFontW(fontSize_, 0, 0, 0, FW_MEDIUM, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Microsoft YaHei UI");
+    smallFont_ = CreateFontW((std::max)(11, fontSize_ - 2), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Microsoft YaHei UI");
+    titleFont_ = CreateFontW(fontSize_ + 2, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Microsoft YaHei UI");
+
+    int w = 560;
+    int h = 540;
+    int x = GetSystemMetrics(SM_CXSCREEN) - w - 24;
+    int y = 72;
+
+    hwnd_ = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED,
+        kClass, L"ETS2 Chat Translator", WS_POPUP,
+        x, y, w, h, nullptr, nullptr, instance_, this);
+    if (!hwnd_) return false;
+
+    SetLayeredWindowAttributes(hwnd_, 0, 238, LWA_ALPHA);
+
+    ShowWindow(hwnd_, SW_SHOW);
+    UpdateWindow(hwnd_);
+    return true;
+}
+
+void ChatPanel::Close()
+{
+    if (hwnd_) {
+        DestroyWindow(hwnd_);
+        hwnd_ = nullptr;
+    }
+    if (font_) DeleteObject(font_);
+    if (smallFont_) DeleteObject(smallFont_);
+    if (titleFont_) DeleteObject(titleFont_);
+    font_ = smallFont_ = titleFont_ = nullptr;
+}
+
+void ChatPanel::MessageLoop()
+{
+    MSG msg{};
+    while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
+    }
+}
+
+unsigned int ChatPanel::Push(ChatEntry entry)
+{
+    unsigned int id;
+    {
+        std::lock_guard<std::mutex> guard(lock_);
+        id = nextId_++;
+        entry.id = id;
+        pendingEntries_.push(std::move(entry));
+    }
+
+    if (hwnd_) {
+        PostMessageW(hwnd_, WM_APP + 3, 0, 0);
+    }
+    return id;
+}
+
+void ChatPanel::PatchTranslation(unsigned int id, const std::wstring& text)
+{
+    {
+        std::lock_guard<std::mutex> guard(lock_);
+        pendingTranslations_.push({ id, text });
+    }
+    if (hwnd_) {
+        PostMessageW(hwnd_, WM_APP + 3, 0, 0);
+    }
+}
+
+void ChatPanel::Status(const std::wstring& text)
+{
+    {
+        std::lock_guard<std::mutex> guard(lock_);
+        status_ = text;
+    }
+    if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
+LRESULT CALLBACK ChatPanel::WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
+{
+    ChatPanel* self = nullptr;
+    if (msg == WM_NCCREATE) {
+        auto cs = reinterpret_cast<CREATESTRUCTW*>(lp);
+        self = reinterpret_cast<ChatPanel*>(cs->lpCreateParams);
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, (LONG_PTR)self);
+        if (self) self->hwnd_ = hwnd;
+    } else {
+        self = reinterpret_cast<ChatPanel*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+    }
+
+    if (!self) return DefWindowProcW(hwnd, msg, wp, lp);
+
+    switch (msg) {
+    case WM_NCCREATE:
+        return TRUE;
+
+    case WM_CREATE:
+        return 0;
+
+    case WM_PAINT: {
+        PAINTSTRUCT ps{};
+        HDC dc = BeginPaint(hwnd, &ps);
+        RECT rc{};
+        GetClientRect(hwnd, &rc);
+        HDC mem = CreateCompatibleDC(dc);
+        HBITMAP bmp = CreateCompatibleBitmap(dc, rc.right, rc.bottom);
+        HBITMAP old = (HBITMAP)SelectObject(mem, bmp);
+        self->Paint(mem, rc);
+        BitBlt(dc, 0, 0, rc.right, rc.bottom, mem, 0, 0, SRCCOPY);
+        SelectObject(mem, old);
+        DeleteObject(bmp);
+        DeleteDC(mem);
+        EndPaint(hwnd, &ps);
+        return 0;
+    }
+    case WM_NCHITTEST: {
+        POINT p{ GET_X_LPARAM(lp), GET_Y_LPARAM(lp) };
+        ScreenToClient(hwnd, &p);
+        RECT rc{};
+        GetClientRect(hwnd, &rc);
+        if (p.y >= rc.bottom - 12 && p.x >= rc.right - 12) return HTBOTTOMRIGHT;
+        if (p.y >= rc.bottom - 8) return HTBOTTOM;
+        if (p.x >= rc.right - 8) return HTRIGHT;
+        if (p.y < self->topBand_ && p.x < rc.right - 40) return HTCAPTION;
+        return HTCLIENT;
+    }
+    case WM_SIZE: {
+        self->ResizeScroll();
+        int cx = LOWORD(lp);
+        int cy = HIWORD(lp);
+        HRGN rgn = CreateRoundRectRgn(0, 0, cx, cy, 16, 16);
+        SetWindowRgn(hwnd, rgn, TRUE);
+        return 0;
+    }
+    case WM_MOUSEWHEEL:
+        self->OnWheel(GET_WHEEL_DELTA_WPARAM(wp));
+        return 0;
+    case WM_LBUTTONDOWN:
+        self->OnClick(GET_X_LPARAM(lp), GET_Y_LPARAM(lp));
+        return 0;
+    case WM_APP + 1:
+        self->ScrollToEnd();
+        return 0;
+    case WM_APP + 3:
+        self->DrainPending();
+        return 0;
+    case WM_ERASEBKGND:
+        return 1;
+    case WM_CLOSE:
+        self->closing_ = true;
+        DestroyWindow(hwnd);
+        return 0;
+    case WM_DESTROY:
+        self->hwnd_ = nullptr;
+        if (self->closing_) PostQuitMessage(0);
+        return 0;
+    case WM_NCDESTROY:
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
+        return 0;
+    }
+    return DefWindowProcW(hwnd, msg, wp, lp);
+}
+
+void ChatPanel::DrainPending()
+{
+    {
+        std::lock_guard<std::mutex> guard(lock_);
+        while (!pendingEntries_.empty()) {
+            entries_.push_back(std::move(pendingEntries_.front()));
+            pendingEntries_.pop();
+        }
+        while (!pendingTranslations_.empty()) {
+            auto item = std::move(pendingTranslations_.front());
+            pendingTranslations_.pop();
+            for (auto it = entries_.rbegin(); it != entries_.rend(); ++it) {
+                if (it->id == item.first) {
+                    it->translated = item.second;
+                    break;
+                }
+            }
+        }
+        if (entries_.size() > 700) entries_.erase(entries_.begin(), entries_.begin() + 150);
+    }
+    InvalidateRect(hwnd_, nullptr, FALSE);
+    if (follow_) PostMessageW(hwnd_, WM_APP + 1, 0, 0);
+}
+
+void ChatPanel::Paint(HDC dc, RECT bounds)
+{
+    SetBkMode(dc, TRANSPARENT);
+    Fill(dc, bounds, cBack);
+
+    RECT outer{ 0, 0, bounds.right, bounds.bottom };
+    RoundFill(dc, outer, 18, cPanel);
+    StrokeRound(dc, { 0, 0, bounds.right - 1, bounds.bottom - 1 }, 18, RGB(45, 55, 75));
+
+    RECT accent{ 16, 12, 20, topBand_ - 10 };
+    RoundFill(dc, accent, 4, cBlue);
+
+    RECT title{ 30, 0, bounds.right - 120, topBand_ };
+    DrawTextLine(dc, titleFont_, cText, L"TruckersMP Chat", title, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+
+    RECT tag{ bounds.right - 118, 14, bounds.right - 52, topBand_ - 12 };
+    RoundFill(dc, tag, 12, RGB(22, 42, 62));
+    DrawTextLine(dc, smallFont_, cCyan, L"LIVE", tag, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+
+    RECT close{ bounds.right - 42, 10, bounds.right - 14, topBand_ - 10 };
+    RoundFill(dc, close, 8, RGB(35, 42, 56));
+    DrawTextLine(dc, titleFont_, RGB(175, 185, 200), L"\x2715", close, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+
+    std::wstring status;
+    {
+        std::lock_guard<std::mutex> guard(lock_);
+        status = status_;
+    }
+    RECT statusBox{ 16, topBand_, bounds.right - 16, topBand_ + statusBand_ - 6 };
+    RoundFill(dc, statusBox, 10, RGB(13, 18, 27));
+    RECT dot{ statusBox.left + 12, statusBox.top + 10, statusBox.left + 20, statusBox.top + 18 };
+    RoundFill(dc, dot, 8, RGB(16, 185, 129));
+    RECT statusText{ statusBox.left + 28, statusBox.top, statusBox.right - 12, statusBox.bottom };
+    DrawTextLine(dc, smallFont_, cDim, CompactStatus(status), statusText, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+
+    RECT area{ 0, topBand_ + statusBand_ + 2, bounds.right, bounds.bottom - 10 };
+    HRGN clip = CreateRectRgn(area.left, area.top, area.right, area.bottom);
+    SelectClipRgn(dc, clip);
+
+    int y = area.top + 8 - scroll_;
+    int left = 14;
+    int right = bounds.right - 18;
+    contentWidth_ = right - left - 24;
+    {
+        std::lock_guard<std::mutex> guard(lock_);
+        for (size_t i = 0; i < entries_.size(); ++i) {
+            const auto& e = entries_[i];
+            int h = EntryHeight(e);
+            if (y > bounds.bottom) break;
+            if (y + h >= area.top) {
+                if (e.serviceLine) {
+                    RECT card{ left, y + 2, right, y + h - 4 };
+                    RoundFill(dc, card, 10, RGB(44, 26, 32));
+                    RECT r{ card.left + 12, card.top, card.right - 12, card.bottom };
+                    DrawTextLine(dc, smallFont_, cWarn, L"[" + e.time + L"] " + e.body, r,
+                        DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+                } else {
+                    RECT card{ left, y + 2, right, y + h - 4 };
+                    RoundFill(dc, card, 10, (i % 2 == 0) ? cCard : cCardAlt);
+                    StrokeRound(dc, card, 10, RGB(39, 48, 65));
+
+                    RECT timeRc{ card.left + 12, card.top + 8, card.left + 62, card.top + 8 + rowH_ };
+                    DrawTextLine(dc, smallFont_, cTime, e.time, timeRc, DT_LEFT | DT_TOP | DT_SINGLELINE);
+
+                    int contentX = card.left + 66;
+                    int contentRight = card.right - 14;
+                    if (!e.author.empty()) {
+                        std::wstring name = e.author + L":";
+                        RECT nameRc{ contentX, card.top + 7, contentRight, card.top + 7 + rowH_ };
+                        DrawTextLine(dc, font_, cName, name, nameRc, DT_LEFT | DT_TOP | DT_SINGLELINE | DT_END_ELLIPSIS);
+                        SIZE ns{};
+                        HFONT old = (HFONT)SelectObject(dc, font_);
+                        GetTextExtentPoint32W(dc, name.c_str(), (int)name.size(), &ns);
+                        SelectObject(dc, old);
+                        contentX += ns.cx + 6;
+                        if (contentX > contentRight - 80) contentX = card.left + 66;
+                    }
+
+                    RECT msgRc{ contentX, card.top + 7, contentRight, card.bottom };
+                    DrawTextLine(dc, font_, cText, e.body, msgRc, DT_LEFT | DT_TOP | DT_WORDBREAK | DT_END_ELLIPSIS);
+
+                    if (!e.translated.empty()) {
+                        RECT transBg{ card.left + 66, card.bottom - subRowH_ - 10, card.right - 12, card.bottom - 8 };
+                        RoundFill(dc, transBg, 8, RGB(38, 43, 54));
+
+                        RECT transBar{ transBg.left, transBg.top, transBg.left + 4, transBg.bottom };
+                        RoundFill(dc, transBar, 4, cBlue);
+
+                        RECT tr{ transBg.left + 12, transBg.top, transBg.right - 10, transBg.bottom };
+                        DrawTextLine(dc, smallFont_, cTrans, e.translated, tr,
+                            DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+                    }
+                }
+            }
+            y += h;
+        }
+    }
+
+    SelectClipRgn(dc, nullptr);
+    DeleteObject(clip);
+
+    int content = ContentHeight();
+    int view = area.bottom - area.top;
+    if (content > view) {
+        int trackTop = area.top + 8;
+        int trackBottom = area.bottom - 8;
+        RECT track{ bounds.right - 10, trackTop, bounds.right - 6, trackBottom };
+        RoundFill(dc, track, 4, RGB(36, 44, 58));
+        int thumbH = (std::max)(28, view * (trackBottom - trackTop) / content);
+        int maxScroll = (std::max)(1, content - view);
+        int thumbTop = trackTop + scroll_ * ((trackBottom - trackTop) - thumbH) / maxScroll;
+        RECT thumb{ bounds.right - 10, thumbTop, bounds.right - 6, thumbTop + thumbH };
+        RoundFill(dc, thumb, 4, RGB(92, 110, 140));
+    }
+}
+
+int ChatPanel::EntryHeight(const ChatEntry& entry) const
+{
+    if (entry.serviceLine) return rowH_ + 12;
+    int approxChars = (std::max)(24, contentWidth_ / (std::max)(7, fontSize_ / 2));
+    int textLines = (std::max)(1, (int)((entry.body.size() + approxChars - 1) / approxChars));
+    textLines = (std::min)(3, textLines);
+    int h = 22 + textLines * rowH_;
+    if (!entry.translated.empty()) h += subRowH_ + 8;
+    return (std::max)(rowH_ + 20, h);
+}
+
+int ChatPanel::ContentHeight() const
+{
+    std::lock_guard<std::mutex> guard(lock_);
+    return ContentHeightUnlocked();
+}
+
+int ChatPanel::ContentHeightUnlocked() const
+{
+    int total = 16;
+    for (const auto& e : entries_) {
+        total += EntryHeight(e);
+    }
+    return total;
+}
+
+void ChatPanel::ResizeScroll()
+{
+    // No native scrollbar in the simple overlay. Mouse wheel still scrolls.
+}
+
+void ChatPanel::ScrollToEnd()
+{
+    RECT rc{};
+    GetClientRect(hwnd_, &rc);
+    int view = rc.bottom - topBand_ - statusBand_ - 1;
+    {
+        std::lock_guard<std::mutex> guard(lock_);
+        scroll_ = (std::max)(0, ContentHeightUnlocked() - view);
+    }
+    follow_ = true;
+    ResizeScroll();
+    InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
+void ChatPanel::OnWheel(int delta)
+{
+    scroll_ -= (delta / WHEEL_DELTA) * rowH_ * 3;
+    RECT rc{};
+    GetClientRect(hwnd_, &rc);
+    int view = rc.bottom - topBand_ - statusBand_ - 1;
+    {
+        std::lock_guard<std::mutex> guard(lock_);
+        int content = ContentHeightUnlocked();
+        int maxScroll = (std::max)(0, content - view);
+        scroll_ = (std::max)(0, (std::min)(scroll_, maxScroll));
+        follow_ = scroll_ >= maxScroll - rowH_;
+    }
+    ResizeScroll();
+    InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
+void ChatPanel::OnClick(int x, int y)
+{
+    RECT rc{};
+    GetClientRect(hwnd_, &rc);
+    if (y >= 6 && y <= topBand_ - 6 && x >= rc.right - 34 && x <= rc.right - 10) {
+        ShowWindow(hwnd_, SW_HIDE);
+    }
+}

@@ -1,0 +1,82 @@
+#pragma once
+
+#include "core_types.h"
+#include "http_agent.h"
+
+#include <atomic>
+#include <condition_variable>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <queue>
+#include <thread>
+#include <unordered_map>
+#include <vector>
+
+class TranslateProvider
+{
+public:
+    using Logger = std::function<void(const std::wstring& line)>;
+
+    explicit TranslateProvider(ProviderSettings settings) : settings_(std::move(settings)) {}
+    virtual ~TranslateProvider() = default;
+
+    virtual bool Ready() const = 0;
+    virtual std::wstring Translate(const std::wstring& input, const RuntimeConfig& runtime, HttpAgent& http, std::wstring& error) = 0;
+    std::wstring Name() const { return settings_.label.empty() ? settings_.kind : settings_.label; }
+    void SetLogger(Logger logger) { logger_ = std::move(logger); }
+
+protected:
+    void LogLine(const std::wstring& line) const { if (logger_) logger_(line); }
+
+    ProviderSettings settings_;
+    Logger logger_;
+};
+
+class TranslateEngine
+{
+public:
+    using Done = std::function<void(unsigned int id, const std::wstring& translated)>;
+    using Logger = std::function<void(const std::wstring& line)>;
+
+    TranslateEngine();
+    ~TranslateEngine();
+
+    bool Start(RuntimeConfig runtime, std::vector<ProviderSettings> providers, Done done);
+    void Stop();
+    void Submit(unsigned int id, const std::wstring& text);
+    void SetLogger(Logger logger) { logger_ = std::move(logger); }
+
+    size_t ProviderCount() const { return providers_.size(); }
+    int WorkerCount() const { return activeWorkers_; }
+    std::wstring LastError() const;
+
+    static bool ShouldTranslate(const std::wstring& text);
+
+private:
+    struct Job
+    {
+        unsigned int id = 0;
+        std::wstring text;
+    };
+
+    void Worker();
+    std::wstring RunProviders(const std::wstring& text, HttpAgent& http);
+    void LogLine(const std::wstring& line) const;
+
+    RuntimeConfig runtime_;
+    Done done_;
+    Logger logger_;
+    std::vector<std::unique_ptr<TranslateProvider>> providers_;
+    std::vector<std::thread> workers_;
+    std::queue<Job> jobs_;
+    mutable std::mutex jobsLock_;
+    std::condition_variable jobsCv_;
+    std::atomic<bool> running_{ false };
+    int activeWorkers_ = 0;
+
+    std::unordered_map<std::wstring, std::wstring> cache_;
+    mutable std::mutex cacheLock_;
+    mutable std::mutex errorLock_;
+    std::wstring lastError_;
+};
