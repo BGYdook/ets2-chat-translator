@@ -1959,14 +1959,15 @@ std::wstring TranslateEngine::RunProviders(const std::wstring& value, HttpAgent&
         std::wstring requestAt = NowStamp();
         auto totalStarted = std::chrono::steady_clock::now();
         int attemptCount = 0;
-        for (int attempt = 0; attempt < 2; ++attempt) {
+        int maxAttempts = providers_.size() == 1 ? 2 : 1;
+        for (int attempt = 0; attempt < maxAttempts; ++attempt) {
             ++attemptCount;
             error.clear();
             WaitProviderTurn(i);
             out = p->Translate(value, runtime_, http, error);
             bool ok = !LooksUntranslated(value, out, runtime_);
             if (ok || !RetryableProviderError(error)) break;
-            if (attempt == 0 && running_) {
+            if (attempt + 1 < maxAttempts && running_) {
                 LogLine(L"[Translate] \"" + value + L"\" provider[" + std::to_wstring(providerIndex) + L"/" +
                     std::to_wstring(providers_.size()) + L"] " + p->Name() + L" retry after " +
                     (error.empty() ? L"empty error" : error));

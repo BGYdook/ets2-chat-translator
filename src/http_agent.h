@@ -34,5 +34,5 @@ private:
                   bool tls, const std::string& body, const std::vector<HeaderPair>& headers);
 
     HINTERNET session_ = nullptr;
-    int timeoutMs_ = 10000;
+    int timeoutMs_ = 5000;
 };

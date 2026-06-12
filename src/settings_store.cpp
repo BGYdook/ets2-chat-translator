@@ -80,8 +80,8 @@ namespace settings
 AppSettings Defaults()
 {
     AppSettings s;
-    s.providers.push_back({ L"andeer", L"Andeer", true, L"", L"", L"", L"auto", L"zh-CN", L"" });
     s.providers.push_back({ L"mymemory", L"MyMemory", true, L"", L"", L"", L"auto", L"zh-CN", L"" });
+    s.providers.push_back({ L"andeer", L"Andeer", false, L"", L"", L"", L"auto", L"zh-CN", L"" });
     return s;
 }
 
@@ -101,7 +101,7 @@ AppSettings Load(const std::wstring& path)
     s.runtime.workerCount = (std::max)(1, (std::min)(32, Jint(json, "workers", s.runtime.workerCount)));
     s.runtime.queueLimit = (size_t)(std::max)(50, Jint(json, "queue_limit", (int)s.runtime.queueLimit));
     s.runtime.cacheLimit = (size_t)(std::max)(100, Jint(json, "cache_limit", (int)s.runtime.cacheLimit));
-    s.runtime.timeoutMs = (std::max)(3000, Jint(json, "timeout_ms", s.runtime.timeoutMs));
+    s.runtime.timeoutMs = (std::max)(1500, (std::min)(6000, Jint(json, "timeout_ms", s.runtime.timeoutMs)));
     s.runtime.fontSize = (std::max)(12, (std::min)(28, Jint(json, "font_size", s.runtime.fontSize)));
 
     auto blocks = ProviderBlocks(json);
@@ -136,7 +136,7 @@ R"({
   "workers": 8,
   "queue_limit": 1000,
   "cache_limit": 1500,
-  "timeout_ms": 10000,
+  "timeout_ms": 5000,
   "font_size": 18,
   "providers": [
     {
@@ -225,16 +225,16 @@ R"({
       "target": "zh-CN"
     },
     {
-      "kind": "andeer",
-      "label": "Andeer",
+      "kind": "mymemory",
+      "label": "MyMemory",
       "enabled": true,
       "source": "auto",
       "target": "zh-CN"
     },
     {
-      "kind": "mymemory",
-      "label": "MyMemory",
-      "enabled": true,
+      "kind": "andeer",
+      "label": "Andeer",
+      "enabled": false,
       "source": "auto",
       "target": "zh-CN"
     }

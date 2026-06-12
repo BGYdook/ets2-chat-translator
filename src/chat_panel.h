@@ -25,16 +25,17 @@ public:
     void Status(const std::wstring& text);
     void ToggleVisible();
     HWND Window() const { return hwnd_; }
+    bool IsVisible() const { return hwnd_ && IsWindowVisible(hwnd_) != FALSE; }
 
 private:
     static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
 
     void Paint(HDC dc, RECT bounds);
-    void LayoutMetrics(HDC dc);
-    int EntryHeight(const ChatEntry& entry) const;
+    void UpdateContentWidth(int clientWidth);
+    int EntryHeight(HDC dc, const ChatEntry& entry) const;
     void ScrollToEnd();
-    int ContentHeight() const;
-    int ContentHeightUnlocked() const;
+    int ContentHeight(HDC dc) const;
+    int ContentHeightUnlocked(HDC dc) const;
     void ResizeScroll();
     void OnWheel(int delta);
     void OnClick(int x, int y);

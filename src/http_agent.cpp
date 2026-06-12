@@ -1,7 +1,9 @@
 #include "http_agent.h"
 
+#include <algorithm>
+
 HttpAgent::HttpAgent(int timeoutMs)
-    : timeoutMs_(timeoutMs)
+    : timeoutMs_((std::max)(1500, (std::min)(6000, timeoutMs)))
 {
     session_ = WinHttpOpen(L"ETS2ChatTranslator/rewrite-20260611", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
         WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
@@ -48,7 +50,8 @@ NetReply HttpAgent::Send(const wchar_t* verb, const std::wstring& host, INTERNET
         return reply;
     }
 
-    WinHttpSetTimeouts(req, 5000, 5000, 5000, timeoutMs_);
+    int connectTimeout = (std::min)(3000, timeoutMs_);
+    WinHttpSetTimeouts(req, 2000, connectTimeout, connectTimeout, timeoutMs_);
 
     std::wstring rawHeaders;
     for (const auto& h : headers) rawHeaders += h.name + L": " + h.value + L"\r\n";

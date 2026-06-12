@@ -119,7 +119,7 @@ void AppRuntime::AcceptChat(const ChatEntry& entry)
     if (!alive_ || !panel_) return;
     CheckConfigReload();
     unsigned int id = panel_->Push(entry);
-    if (translator_ && !entry.serviceLine && TranslateEngine::ShouldTranslate(entry.body)) {
+    if (translator_ && panel_->IsVisible() && !entry.serviceLine && TranslateEngine::ShouldTranslate(entry.body)) {
         std::lock_guard<std::mutex> g(translatorLock_);
         if (translator_) translator_->Submit(id, entry.body);
     }

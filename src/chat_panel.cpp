@@ -69,15 +69,6 @@ std::wstring CompactStatus(const std::wstring& status)
     return status;
 }
 
-int ApproxTextLines(const std::wstring& text, int width, int fontSize, int maxLines)
-{
-    if (text.empty()) return 1;
-    int avgCharW = (std::max)(7, fontSize / 2);
-    int charsPerLine = (std::max)(12, width / avgCharW);
-    int lines = (int)((text.size() + charsPerLine - 1) / charsPerLine);
-    return (std::max)(1, (std::min)(maxLines, lines));
-}
-
 bool ParseHotkey(const std::wstring& hotkey, UINT& modifiers, UINT& vk)
 {
     modifiers = 0;
@@ -127,6 +118,83 @@ bool ParseHotkey(const std::wstring& hotkey, UINT& modifiers, UINT& vk)
     }
 
     return modifiers != 0 && vk != 0;
+}
+
+int TextWidth(HDC dc, HFONT font, const std::wstring& text)
+{
+    if (text.empty()) return 0;
+    HFONT old = (HFONT)SelectObject(dc, font);
+    SIZE size{};
+    GetTextExtentPoint32W(dc, text.c_str(), (int)text.size(), &size);
+    SelectObject(dc, old);
+    return size.cx;
+}
+
+int AverageCharWidth(HDC dc, HFONT font)
+{
+    HFONT old = (HFONT)SelectObject(dc, font);
+    TEXTMETRICW tm{};
+    GetTextMetricsW(dc, &tm);
+    SelectObject(dc, old);
+    return (std::max)(6, (int)tm.tmAveCharWidth);
+}
+
+std::wstring BreakLongRuns(const std::wstring& text, int maxRun)
+{
+    if (text.empty()) return text;
+    std::wstring out;
+    out.reserve(text.size() + text.size() / 24);
+    int run = 0;
+    for (wchar_t ch : text) {
+        out.push_back(ch);
+        bool asciiToken = (ch >= L'a' && ch <= L'z') || (ch >= L'A' && ch <= L'Z') ||
+            (ch >= L'0' && ch <= L'9');
+        if (!asciiToken) {
+            run = 0;
+            continue;
+        }
+        ++run;
+        if (run >= maxRun) {
+            out.push_back(L' ');
+            run = 0;
+        }
+    }
+    return out;
+}
+
+std::wstring LayoutText(HDC dc, HFONT font, const std::wstring& text, int width)
+{
+    int maxRun = (std::max)(10, width / AverageCharWidth(dc, font) - 2);
+    return BreakLongRuns(text, maxRun);
+}
+
+int WrappedTextHeight(HDC dc, HFONT font, const std::wstring& text, int width, int lineHeight, int maxLines)
+{
+    if (width <= 0 || text.empty()) return lineHeight;
+    std::wstring display = LayoutText(dc, font, text, width);
+    RECT measure{ 0, 0, width, 0 };
+    HFONT old = (HFONT)SelectObject(dc, font);
+    DrawTextW(dc, display.c_str(), -1, &measure,
+        DT_CALCRECT | DT_WORDBREAK | DT_EDITCONTROL | DT_NOPREFIX);
+    SelectObject(dc, old);
+
+    int measured = measure.bottom - measure.top;
+    int maxHeight = lineHeight * (std::max)(1, maxLines);
+    return (std::max)(lineHeight, (std::min)(measured, maxHeight));
+}
+
+void DrawWrappedText(HDC dc, HFONT font, COLORREF color, const std::wstring& text,
+    RECT r, int maxLines, int lineHeight)
+{
+    std::wstring display = LayoutText(dc, font, text, r.right - r.left);
+    int maxHeight = lineHeight * (std::max)(1, maxLines);
+    r.bottom = (std::min)(r.bottom, r.top + maxHeight);
+
+    HFONT old = (HFONT)SelectObject(dc, font);
+    SetTextColor(dc, color);
+    DrawTextW(dc, display.c_str(), -1, &r,
+        DT_LEFT | DT_TOP | DT_WORDBREAK | DT_EDITCONTROL | DT_END_ELLIPSIS | DT_NOPREFIX);
+    SelectObject(dc, old);
 }
 }
 
@@ -443,6 +511,7 @@ void ChatPanel::DrainPending()
 void ChatPanel::Paint(HDC dc, RECT bounds)
 {
     SetBkMode(dc, TRANSPARENT);
+    UpdateContentWidth(bounds.right);
     Fill(dc, bounds, cBack);
 
     RECT outer{ 0, 0, bounds.right, bounds.bottom };
@@ -482,12 +551,11 @@ void ChatPanel::Paint(HDC dc, RECT bounds)
     int y = area.top + 8 - scroll_;
     int left = 14;
     int right = bounds.right - 18;
-    contentWidth_ = right - left - 24;
     {
         std::lock_guard<std::mutex> guard(lock_);
         for (size_t i = 0; i < entries_.size(); ++i) {
             const auto& e = entries_[i];
-            int h = EntryHeight(e);
+            int h = EntryHeight(dc, e);
             if (y > bounds.bottom) break;
             if (y + h >= area.top) {
                 if (e.serviceLine) {
@@ -504,40 +572,38 @@ void ChatPanel::Paint(HDC dc, RECT bounds)
                     RECT timeRc{ card.left + 12, card.top + 10, card.left + 12 + kTimeColumnW, card.top + 10 + rowH_ };
                     DrawTextLine(dc, smallFont_, cTime, e.time, timeRc, DT_LEFT | DT_TOP | DT_SINGLELINE);
 
-                    int contentX = card.left + 14 + kTimeColumnW;
+                    const int baseContentX = card.left + 14 + kTimeColumnW;
+                    int contentX = baseContentX;
                     int contentRight = card.right - 14;
                     int lineTop = card.top + 8;
                     if (!e.author.empty()) {
                         std::wstring name = e.author + L":";
+                        int nameWidth = TextWidth(dc, font_, name);
                         RECT nameRc{ contentX, lineTop, contentRight, lineTop + rowH_ };
                         DrawTextLine(dc, font_, cName, name, nameRc, DT_LEFT | DT_TOP | DT_SINGLELINE | DT_END_ELLIPSIS);
-                        SIZE ns{};
-                        HFONT old = (HFONT)SelectObject(dc, font_);
-                        GetTextExtentPoint32W(dc, name.c_str(), (int)name.size(), &ns);
-                        SelectObject(dc, old);
-                        contentX += ns.cx + 6;
+                        contentX += nameWidth + 6;
                         if (contentX > contentRight - 120) {
-                            contentX = card.left + 14 + kTimeColumnW;
+                            contentX = baseContentX;
                             lineTop += rowH_ - 4;
                         }
                     }
 
-                    int textLines = ApproxTextLines(e.body, contentRight - contentX, fontSize_, 3);
-                    RECT msgRc{ contentX, lineTop, contentRight, lineTop + textLines * rowH_ };
-                    DrawTextLine(dc, font_, cText, e.body, msgRc, DT_LEFT | DT_TOP | DT_WORDBREAK | DT_END_ELLIPSIS);
+                    int msgH = WrappedTextHeight(dc, font_, e.body, contentRight - contentX, rowH_, 5);
+                    RECT msgRc{ contentX, lineTop, contentRight, lineTop + msgH };
+                    DrawWrappedText(dc, font_, cText, e.body, msgRc, 5, rowH_);
 
                     if (!e.translated.empty()) {
                         int transTop = msgRc.bottom + 8;
-                        int transLines = ApproxTextLines(e.translated, contentRight - (card.left + 14 + kTimeColumnW) - 22, fontSize_ - 2, 2);
-                        RECT transBg{ card.left + 14 + kTimeColumnW, transTop, card.right - 12, transTop + transLines * subRowH_ + 8 };
+                        int transTextWidth = card.right - 22 - baseContentX;
+                        int transTextH = WrappedTextHeight(dc, smallFont_, e.translated, transTextWidth, subRowH_, 4);
+                        RECT transBg{ baseContentX, transTop, card.right - 12, transTop + transTextH + 8 };
                         RoundFill(dc, transBg, 8, RGB(38, 43, 54));
 
                         RECT transBar{ transBg.left, transBg.top + 4, transBg.left + 4, transBg.bottom - 4 };
                         RoundFill(dc, transBar, 4, cBlue);
 
                         RECT tr{ transBg.left + 12, transBg.top + 4, transBg.right - 10, transBg.bottom - 4 };
-                        DrawTextLine(dc, smallFont_, cTrans, e.translated, tr,
-                            DT_LEFT | DT_TOP | DT_WORDBREAK | DT_END_ELLIPSIS);
+                        DrawWrappedText(dc, smallFont_, cTrans, e.translated, tr, 4, subRowH_);
                     }
                 }
             }
@@ -548,7 +614,7 @@ void ChatPanel::Paint(HDC dc, RECT bounds)
     SelectClipRgn(dc, nullptr);
     DeleteObject(clip);
 
-    int content = ContentHeight();
+    int content = ContentHeight(dc);
     int view = area.bottom - area.top;
     if (content > view) {
         int trackTop = area.top + 8;
@@ -563,30 +629,39 @@ void ChatPanel::Paint(HDC dc, RECT bounds)
     }
 }
 
-int ChatPanel::EntryHeight(const ChatEntry& entry) const
+void ChatPanel::UpdateContentWidth(int clientWidth)
+{
+    int left = 14;
+    int right = clientWidth - 18;
+    contentWidth_ = (std::max)(120, right - left - 24);
+}
+
+int ChatPanel::EntryHeight(HDC dc, const ChatEntry& entry) const
 {
     if (entry.serviceLine) return rowH_ + 12;
     int textWidth = (std::max)(80, contentWidth_ - kTimeColumnW - 10);
-    int textLines = ApproxTextLines(entry.body, textWidth, fontSize_, 3);
-    int h = 20 + textLines * rowH_ + 12;
+    int h = 20 + WrappedTextHeight(dc, font_, entry.body, textWidth, rowH_, 5) + 12;
+    if (!entry.author.empty()) {
+        int nameWidth = TextWidth(dc, font_, entry.author + L":");
+        if (nameWidth + 6 > textWidth - 120) h += rowH_ - 4;
+    }
     if (!entry.translated.empty()) {
-        int transLines = ApproxTextLines(entry.translated, textWidth - 22, fontSize_ - 2, 2);
-        h += transLines * subRowH_ + 16;
+        h += WrappedTextHeight(dc, smallFont_, entry.translated, textWidth - 22, subRowH_, 4) + 16;
     }
     return (std::max)(rowH_ + 20, h);
 }
 
-int ChatPanel::ContentHeight() const
+int ChatPanel::ContentHeight(HDC dc) const
 {
     std::lock_guard<std::mutex> guard(lock_);
-    return ContentHeightUnlocked();
+    return ContentHeightUnlocked(dc);
 }
 
-int ChatPanel::ContentHeightUnlocked() const
+int ChatPanel::ContentHeightUnlocked(HDC dc) const
 {
     int total = 16;
     for (const auto& e : entries_) {
-        total += EntryHeight(e);
+        total += EntryHeight(dc, e);
     }
     return total;
 }
@@ -598,13 +673,17 @@ void ChatPanel::ResizeScroll()
 
 void ChatPanel::ScrollToEnd()
 {
+    if (!hwnd_) return;
     RECT rc{};
     GetClientRect(hwnd_, &rc);
+    UpdateContentWidth(rc.right);
     int view = rc.bottom - topBand_ - statusBand_ - 1;
+    HDC dc = GetDC(hwnd_);
     {
         std::lock_guard<std::mutex> guard(lock_);
-        scroll_ = (std::max)(0, ContentHeightUnlocked() - view);
+        scroll_ = (std::max)(0, ContentHeightUnlocked(dc) - view);
     }
+    ReleaseDC(hwnd_, dc);
     follow_ = true;
     ResizeScroll();
     InvalidateRect(hwnd_, nullptr, FALSE);
@@ -612,17 +691,21 @@ void ChatPanel::ScrollToEnd()
 
 void ChatPanel::OnWheel(int delta)
 {
+    if (!hwnd_) return;
     scroll_ -= (delta / WHEEL_DELTA) * rowH_ * 3;
     RECT rc{};
     GetClientRect(hwnd_, &rc);
+    UpdateContentWidth(rc.right);
     int view = rc.bottom - topBand_ - statusBand_ - 1;
+    HDC dc = GetDC(hwnd_);
     {
         std::lock_guard<std::mutex> guard(lock_);
-        int content = ContentHeightUnlocked();
+        int content = ContentHeightUnlocked(dc);
         int maxScroll = (std::max)(0, content - view);
         scroll_ = (std::max)(0, (std::min)(scroll_, maxScroll));
         follow_ = scroll_ >= maxScroll - rowH_;
     }
+    ReleaseDC(hwnd_, dc);
     ResizeScroll();
     InvalidateRect(hwnd_, nullptr, FALSE);
 }

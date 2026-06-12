@@ -170,7 +170,7 @@ function baseConfig() {
     workers: Math.max(1, Math.min(32, numberValue(els.workers, 8))),
     queue_limit: Math.max(50, numberValue(els.queueLimit, 1000)),
     cache_limit: Math.max(100, numberValue(els.cacheLimit, 1500)),
-    timeout_ms: Math.max(3000, numberValue(els.timeoutMs, 10000)),
+    timeout_ms: Math.max(1500, Math.min(6000, numberValue(els.timeoutMs, 5000))),
     font_size: Math.max(12, Math.min(28, numberValue(els.fontSize, 18))),
     providers: []
   };
@@ -246,7 +246,7 @@ async function loadInstalledConfig(silent = false) {
     els.workers.value = config.workers ?? 8;
     els.queueLimit.value = config.queue_limit ?? 1000;
     els.cacheLimit.value = config.cache_limit ?? 1500;
-    els.timeoutMs.value = config.timeout_ms ?? 10000;
+    els.timeoutMs.value = config.timeout_ms ?? 5000;
     els.fontSize.value = config.font_size ?? 18;
     setFontSize(config.font_size ?? 18);
     const primary = (config.providers || []).find((provider) => provider.enabled && !['mymemory', 'andeer'].includes(provider.kind));
