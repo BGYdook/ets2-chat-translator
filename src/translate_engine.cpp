@@ -57,9 +57,24 @@ bool HasChinese(const std::wstring& value)
 std::wstring LowerAscii(std::wstring value)
 {
     std::transform(value.begin(), value.end(), value.begin(), [](wchar_t ch) {
+        if (ch >= 0xFF01 && ch <= 0xFF5E) ch = (wchar_t)(ch - 0xFEE0);
+        if (ch == 0x3000) ch = L' ';
         return (wchar_t)towlower(ch);
     });
     return value;
+}
+
+std::wstring NormalizeChatForDictionary(const std::wstring& value)
+{
+    std::wstring out;
+    out.reserve(value.size());
+    for (wchar_t ch : value) {
+        if (ch == 0xFEFF || ch == 0x200B || ch == 0x200C || ch == 0x200D || ch == 0x2060) continue;
+        if (ch >= 0xFF01 && ch <= 0xFF5E) ch = (wchar_t)(ch - 0xFEE0);
+        if (ch == 0x3000) ch = L' ';
+        out.push_back((wchar_t)towlower(ch));
+    }
+    return text::Trim(out);
 }
 
 std::wstring CompareKey(const std::wstring& value)
@@ -98,6 +113,8 @@ bool EndsWithWord(const std::wstring& value, const std::wstring& suffix, std::ws
 bool IsChatEdgePunctuation(wchar_t ch)
 {
     return ch == L'!' || ch == L'?' || ch == L'.' || ch == L',' || ch == L';' || ch == L':'
+        || ch == L'~' || ch == L'-' || ch == L'_' || ch == L'\'' || ch == L'"'
+        || ch == L'\x2026' || ch == L'\x2018' || ch == L'\x2019' || ch == L'\x201C' || ch == L'\x201D'
         || ch == L'\xFF01' || ch == L'\xFF1F' || ch == L'\x3002' || ch == L'\xFF0C'
         || ch == L'\xFF1B' || ch == L'\xFF1A';
 }
@@ -119,7 +136,7 @@ std::wstring TrimTrailingChatPunctuation(std::wstring value)
 
 std::wstring ShortPhraseFallback(const std::wstring& input)
 {
-    std::wstring lower = text::Trim(LowerAscii(input));
+    std::wstring lower = NormalizeChatForDictionary(input);
     if (lower.empty()) return L"";
     std::wstring edgeTrimmed = TrimChatEdgePunctuation(lower);
     std::wstring trailingTrimmed = TrimTrailingChatPunctuation(lower);
@@ -171,7 +188,17 @@ std::wstring ShortPhraseFallback(const std::wstring& input)
         { L"lol", L"哈哈" },
         { L"lmao", L"哈哈" },
         { L"xd", L"哈哈" },
+        { L"omg", L"天啊" },
+        { L"ffs", L"真服了" },
         { L"wtf", L"什么鬼" },
+        { L"fk", L"靠" },
+        { L"fck", L"靠" },
+        { L"fuck", L"操" },
+        { L"shit", L"靠" },
+        { L"damn", L"该死" },
+        { L"idiot", L"白痴" },
+        { L"stupid", L"蠢货" },
+        { L"noob", L"菜鸟" },
         { L":)", L"微笑" },
         { L":(", L"难过" },
         { L":d", L"哈哈" },
@@ -185,6 +212,13 @@ std::wstring ShortPhraseFallback(const std::wstring& input)
         { L"kk", L"好" },
         { L"y", L"是" },
         { L"n", L"不" }
+    };
+
+    auto exactLookup = [&](const std::wstring& key) -> std::wstring {
+        for (const auto& item : exact) {
+            if (key == item.key) return item.value;
+        }
+        return L"";
     };
 
     if (edgeTrimmed == L"sry pls" || edgeTrimmed == L"sorry pls" || edgeTrimmed == L"sry please" || edgeTrimmed == L"sorry please") {
@@ -213,6 +247,34 @@ std::wstring ShortPhraseFallback(const std::wstring& input)
 
     for (const auto& item : exact) {
         if (lower == item.key || edgeTrimmed == item.key) return item.value;
+    }
+
+    std::vector<std::wstring> tokenTranslations;
+    std::wstring token;
+    for (size_t i = 0; i <= lower.size(); ++i) {
+        wchar_t ch = (i < lower.size()) ? lower[i] : L' ';
+        if (iswspace(ch)) {
+            token = TrimChatEdgePunctuation(token);
+            if (!token.empty()) {
+                std::wstring translated = exactLookup(token);
+                if (translated.empty()) {
+                    tokenTranslations.clear();
+                    break;
+                }
+                tokenTranslations.push_back(translated);
+            }
+            token.clear();
+        } else {
+            token.push_back(ch);
+        }
+    }
+    if (tokenTranslations.size() >= 2 && tokenTranslations.size() <= 5) {
+        std::wstring out;
+        for (const auto& translated : tokenTranslations) {
+            if (!out.empty()) out += L"，";
+            out += translated;
+        }
+        return out;
     }
 
     std::wstring prefix;
@@ -1509,13 +1571,16 @@ void TranslateEngine::Stop()
 
 void TranslateEngine::Submit(unsigned int id, const std::wstring& value)
 {
-    if (!running_ || value.empty()) return;
+    if (value.empty()) return;
 
     std::wstring quick = ShortPhraseFallback(value);
     if (!quick.empty()) {
+        LogLine(L"[Translate] \"" + value + L"\" -> 本地字典: " + quick);
         if (done_) done_(id, quick);
         return;
     }
+
+    if (!running_) return;
 
     {
         std::lock_guard<std::mutex> g(cacheLock_);
