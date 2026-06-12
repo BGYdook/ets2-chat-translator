@@ -6,6 +6,12 @@ const childProcess = require('child_process');
 const DLL_NAME = 'ets2_chat_translator.dll';
 const CONFIG_NAME = 'ets2_chat_translator_config.json';
 
+function iconPath() {
+  const packaged = path.join(process.resourcesPath || '', 'logo.ico');
+  if (packaged && fs.existsSync(packaged)) return packaged;
+  return path.resolve(__dirname, '..', '..', 'logo.ico');
+}
+
 const GAMES = {
   ets2: {
     shortName: 'ETS2',
@@ -54,6 +60,7 @@ function createWindow() {
     title: 'ETS2 Chat Translator Manager',
     backgroundColor: '#f4f5f7',
     autoHideMenuBar: true,
+    icon: iconPath(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,

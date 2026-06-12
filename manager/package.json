@@ -19,13 +19,19 @@
       "src/**/*",
       "package.json"
     ],
+    "icon": "../logo.ico",
     "extraResources": [
       {
         "from": "../build/ets2_chat_translator.dll",
         "to": "ets2_chat_translator.dll"
+      },
+      {
+        "from": "../logo.ico",
+        "to": "logo.ico"
       }
     ],
     "win": {
+      "icon": "../logo.ico",
       "target": [
         {
           "target": "nsis",
@@ -37,6 +43,8 @@
       "artifactName": "ETS2-Chat-Translator-Manager-Setup-${version}.exe"
     },
     "nsis": {
+      "installerIcon": "../logo.ico",
+      "uninstallerIcon": "../logo.ico",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
