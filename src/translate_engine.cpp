@@ -159,54 +159,124 @@ bool IsAsciiTokenChar(wchar_t ch)
     return (ch >= L'a' && ch <= L'z') || (ch >= L'A' && ch <= L'Z') || (ch >= L'0' && ch <= L'9');
 }
 
+struct ChatTokenItem
+{
+    const wchar_t* key;
+    const wchar_t* value;
+    bool pauseAfter;
+};
+
+const ChatTokenItem* ChatTokenItems(size_t& count)
+{
+    static const ChatTokenItem items[] = {
+        { L"wtf", L"什么鬼", true },
+        { L"wdf", L"什么鬼", true },
+        { L"tf", L"什么鬼", true },
+        { L"wth", L"什么鬼", true },
+        { L"wdym", L"你什么意思", true },
+        { L"wyd", L"你在干嘛", true },
+        { L"omg", L"天啊", true },
+        { L"ffs", L"真服了", true },
+        { L"lol", L"哈哈", true },
+        { L"lmao", L"哈哈", true },
+        { L"rofl", L"笑死", true },
+        { L"xd", L"哈哈", true },
+        { L"sry", L"抱歉", true },
+        { L"sr", L"抱歉", true },
+        { L"srry", L"抱歉", true },
+        { L"sorry", L"抱歉", true },
+        { L"soz", L"抱歉", true },
+        { L"pls", L"请", false },
+        { L"plz", L"请", false },
+        { L"please", L"请", false },
+        { L"ty", L"谢谢", true },
+        { L"thx", L"谢谢", true },
+        { L"tnx", L"谢谢", true },
+        { L"thanks", L"谢谢", true },
+        { L"np", L"没事", true },
+        { L"nvm", L"没事", true },
+        { L"brb", L"马上回", true },
+        { L"afk", L"暂离", true },
+        { L"idk", L"我不知道", true },
+        { L"idc", L"无所谓", true },
+        { L"ikr", L"就是说", true },
+        { L"asap", L"尽快", true },
+        { L"gg", L"打得好", true },
+        { L"wp", L"打得好", true },
+        { L"gl", L"祝好运", true },
+        { L"hf", L"玩得开心", true },
+        { L"hi", L"你好", true },
+        { L"hello", L"你好", true },
+        { L"hey", L"嘿", true },
+        { L"yo", L"嘿", true },
+        { L"sup", L"咋样", true },
+        { L"bye", L"再见", true },
+        { L"cya", L"再见", true },
+        { L"cu", L"再见", true },
+        { L"bb", L"再见", true },
+        { L"gn", L"晚安", true },
+        { L"gn8", L"晚安", true },
+        { L"gm", L"早安", true },
+        { L"bro", L"兄弟", true },
+        { L"bruh", L"兄弟", true },
+        { L"dude", L"老兄", true },
+        { L"mate", L"伙计", true },
+        { L"man", L"兄弟", true },
+        { L"k", L"好", true },
+        { L"kk", L"好", true },
+        { L"ok", L"好的", true },
+        { L"okay", L"好的", true },
+        { L"yes", L"是", true },
+        { L"y", L"是", true },
+        { L"no", L"不", true },
+        { L"n", L"不", true },
+        { L"wait", L"等一下", true },
+        { L"stop", L"停一下", true },
+        { L"go", L"走", true },
+        { L"slow", L"慢点", true },
+        { L"move", L"让一下", true },
+        { L"lag", L"卡顿", true },
+        { L"laggy", L"很卡", true },
+        { L"crash", L"撞车", true },
+        { L"ram", L"撞人", true },
+        { L"rammer", L"撞人玩家", true },
+        { L"rec", L"已录屏", true },
+        { L"recording", L"已录屏", true },
+        { L"report", L"举报", true },
+        { L"rep", L"举报", true },
+        { L"ban", L"封禁", true },
+        { L"kick", L"踢出", true },
+        { L"fk", L"靠", true },
+        { L"fck", L"靠", true },
+        { L"fuck", L"操", true },
+        { L"shit", L"靠", true },
+        { L"damn", L"该死", true },
+        { L"stfu", L"闭嘴", true },
+        { L"fu", L"去你的", true },
+        { L"trash", L"垃圾", false },
+        { L"ez", L"太简单了", true },
+        { L"idiot", L"白痴", false },
+        { L"stupid", L"蠢货", false },
+        { L"noob", L"菜鸟", false },
+        { L"moron", L"蠢货", false },
+        { L"clown", L"小丑", false }
+    };
+    count = sizeof(items) / sizeof(items[0]);
+    return items;
+}
+
 bool ProviderLeftoverToken(const std::wstring& token, std::wstring& translated, bool& pauseAfter)
 {
     std::wstring key = TrimChatEdgePunctuation(NormalizeChatForDictionary(token));
     std::wstring squeezedKey = SqueezeRepeatedAsciiLetters(key, 1);
     pauseAfter = false;
 
-    struct Item { const wchar_t* key; const wchar_t* value; bool pauseAfter; };
-    static const Item items[] = {
-        { L"wtf", L"什么鬼", true },
-        { L"wdf", L"什么鬼", true },
-        { L"tf", L"什么鬼", true },
-        { L"omg", L"天啊", true },
-        { L"ffs", L"真服了", true },
-        { L"lol", L"哈哈", true },
-        { L"lmao", L"哈哈", true },
-        { L"xd", L"哈哈", true },
-        { L"sry", L"抱歉", true },
-        { L"sr", L"抱歉", true },
-        { L"sorry", L"抱歉", true },
-        { L"pls", L"请", false },
-        { L"plz", L"请", false },
-        { L"ty", L"谢谢", true },
-        { L"thx", L"谢谢", true },
-        { L"brb", L"马上回", true },
-        { L"afk", L"暂离", true },
-        { L"idk", L"我不知道", true },
-        { L"idc", L"无所谓", true },
-        { L"gg", L"打得好", true },
-        { L"wp", L"打得好", true },
-        { L"bro", L"兄弟", true },
-        { L"bruh", L"兄弟", true },
-        { L"dude", L"老兄", true },
-        { L"mate", L"伙计", true },
-        { L"man", L"兄弟", true },
-        { L"fk", L"靠", true },
-        { L"fck", L"靠", true },
-        { L"fuck", L"操", true },
-        { L"shit", L"靠", true },
-        { L"damn", L"该死", true },
-        { L"idiot", L"白痴", false },
-        { L"stupid", L"蠢货", false },
-        { L"noob", L"菜鸟", false }
-    };
-
-    for (const auto& item : items) {
-        if (key == item.key || squeezedKey == item.key) {
-            translated = item.value;
-            pauseAfter = item.pauseAfter;
+    size_t count = 0;
+    const ChatTokenItem* items = ChatTokenItems(count);
+    for (size_t i = 0; i < count; ++i) {
+        if (key == items[i].key || squeezedKey == items[i].key) {
+            translated = items[i].value;
+            pauseAfter = items[i].pauseAfter;
             return true;
         }
     }
@@ -220,6 +290,24 @@ bool IsDigitsOnly(const std::wstring& value)
         if (ch < L'0' || ch > L'9') return false;
     }
     return true;
+}
+
+bool IsIdOrNameToken(const std::wstring& value)
+{
+    if (value.empty()) return false;
+    bool hasAlnum = false;
+    bool hasDigit = false;
+    bool hasMarker = false;
+    for (wchar_t ch : value) {
+        if ((ch >= L'a' && ch <= L'z') || (ch >= L'0' && ch <= L'9') || ch == L'_' || ch == L'-') {
+            hasAlnum = true;
+            if (ch >= L'0' && ch <= L'9') hasDigit = true;
+            if (ch == L'_' || ch == L'-') hasMarker = true;
+            continue;
+        }
+        return false;
+    }
+    return hasAlnum && (hasDigit || hasMarker || value.size() >= 6);
 }
 
 std::vector<std::wstring> SplitWords(const std::wstring& value)
@@ -277,6 +365,54 @@ std::wstring FixProviderLeftoverShorthand(const std::wstring& value)
     return changed ? text::Trim(out) : value;
 }
 
+std::wstring JoinTailTokens(const std::vector<std::wstring>& words, size_t start, size_t maxCount = 2)
+{
+    std::wstring out;
+    size_t end = (std::min)(words.size(), start + maxCount);
+    for (size_t i = start; i < end; ++i) {
+        if (!IsIdOrNameToken(words[i])) break;
+        if (!out.empty()) out += L" ";
+        out += words[i];
+    }
+    return out;
+}
+
+std::wstring StructuredTruckersPhrase(const std::vector<std::wstring>& words, size_t start)
+{
+    if (start >= words.size()) return L"";
+    if (start + 1 < words.size() && words[start] == L"rec" && words[start + 1] == L"ban") {
+        std::wstring out = L"已录屏，等封禁";
+        std::wstring target = JoinTailTokens(words, start + 2);
+        if (!target.empty()) out += L" " + target;
+        return out;
+    }
+    if (words[start] == L"rec" || words[start] == L"recording") {
+        std::wstring out = L"已录屏";
+        std::wstring target = JoinTailTokens(words, start + 1);
+        if (!target.empty()) out += L" " + target;
+        return out;
+    }
+    if (words[start] == L"report" || words[start] == L"rep") {
+        std::wstring out = L"举报";
+        std::wstring target = JoinTailTokens(words, start + 1);
+        if (!target.empty()) out += L" " + target;
+        return out;
+    }
+    if (words[start] == L"ban") {
+        std::wstring out = L"封禁";
+        std::wstring target = JoinTailTokens(words, start + 1);
+        if (!target.empty()) out += L" " + target;
+        return out;
+    }
+    if (words[start] == L"kick") {
+        std::wstring out = L"踢出";
+        std::wstring target = JoinTailTokens(words, start + 1);
+        if (!target.empty()) out += L" " + target;
+        return out;
+    }
+    return L"";
+}
+
 std::wstring ShortPhraseFallback(const std::wstring& input)
 {
     std::wstring lower = NormalizeChatForDictionary(input);
@@ -286,82 +422,18 @@ std::wstring ShortPhraseFallback(const std::wstring& input)
 
     struct Item { const wchar_t* key; const wchar_t* value; };
     static const Item exact[] = {
-        { L"sry", L"抱歉" },
-        { L"sr", L"抱歉" },
-        { L"sorry", L"抱歉" },
-        { L"pls", L"请" },
-        { L"plz", L"请" },
-        { L"please", L"请" },
-        { L"no", L"不" },
-        { L"yes", L"是" },
-        { L"ok", L"好的" },
-        { L"okay", L"好的" },
-        { L"ty", L"谢谢" },
-        { L"thx", L"谢谢" },
-        { L"thanks", L"谢谢" },
         { L"thank you", L"谢谢" },
-        { L"np", L"没事" },
-        { L"nvm", L"没事" },
-        { L"gg", L"打得好" },
-        { L"wp", L"打得好" },
-        { L"wait", L"等一下" },
-        { L"stop", L"停一下" },
-        { L"go", L"走" },
+        { L"good luck", L"祝好运" },
+        { L"have fun", L"玩得开心" },
         { L"rec ban", L"已录屏，等封禁" },
-        { L"rec", L"已录屏" },
-        { L"recording", L"已录屏" },
-        { L"hi", L"你好" },
-        { L"hi!", L"你好" },
-        { L"hello", L"你好" },
-        { L"hey", L"嘿" },
-        { L"yo", L"嘿" },
-        { L"sup", L"咋样" },
         { L"o/", L"挥手" },
         { L"o//", L"挥手" },
         { L"\\o", L"挥手" },
         { L"\\o/", L"欢呼" },
-        { L"bye", L"再见" },
-        { L"cya", L"再见" },
-        { L"cu", L"再见" },
-        { L"gn", L"晚安" },
-        { L"gn8", L"晚安" },
-        { L"gm", L"早安" },
-        { L"brb", L"马上回" },
-        { L"afk", L"暂离" },
-        { L"lol", L"哈哈" },
-        { L"lmao", L"哈哈" },
-        { L"xd", L"哈哈" },
-        { L"omg", L"天啊" },
-        { L"ffs", L"真服了" },
-        { L"wtf", L"什么鬼" },
-        { L"wdf", L"什么鬼" },
-        { L"tf", L"什么鬼" },
-        { L"fk", L"靠" },
-        { L"fck", L"靠" },
-        { L"fuck", L"操" },
-        { L"shit", L"靠" },
-        { L"damn", L"该死" },
-        { L"idiot", L"白痴" },
-        { L"stupid", L"蠢货" },
-        { L"noob", L"菜鸟" },
         { L":)", L"微笑" },
         { L":(", L"难过" },
         { L":d", L"哈哈" },
-        { L"<3", L"爱心" },
-        { L"idk", L"我不知道" },
-        { L"idc", L"无所谓" },
-        { L"ikr", L"就是说" },
-        { L"asap", L"尽快" },
-        { L"bro", L"兄弟" },
-        { L"bruh", L"兄弟" },
-        { L"dude", L"老兄" },
-        { L"mate", L"伙计" },
-        { L"man", L"兄弟" },
-        { L"bb", L"再见" },
-        { L"k", L"好" },
-        { L"kk", L"好" },
-        { L"y", L"是" },
-        { L"n", L"不" }
+        { L"<3", L"爱心" }
     };
 
     auto exactLookup = [&](const std::wstring& key) -> std::wstring {
@@ -369,6 +441,9 @@ std::wstring ShortPhraseFallback(const std::wstring& input)
         for (const auto& item : exact) {
             if (key == item.key || squeezedKey == item.key) return item.value;
         }
+        std::wstring translated;
+        bool pauseAfter = false;
+        if (ProviderLeftoverToken(key, translated, pauseAfter)) return translated;
         return L"";
     };
 
@@ -377,10 +452,23 @@ std::wstring ShortPhraseFallback(const std::wstring& input)
     }
 
     std::vector<std::wstring> words = SplitWords(lower);
-    if (words.size() >= 2 && words[0] == L"rec" && words[1] == L"ban") {
-        std::wstring out = L"已录屏，等封禁";
-        if (words.size() >= 3 && IsDigitsOnly(words[2])) out += L" " + words[2];
-        return out;
+    for (size_t start = 0; start < words.size() && start <= 2; ++start) {
+        std::wstring structured = StructuredTruckersPhrase(words, start);
+        if (structured.empty()) continue;
+        if (start == 0) return structured;
+
+        std::wstring prefix;
+        bool prefixOk = true;
+        for (size_t i = 0; i < start; ++i) {
+            std::wstring translated = exactLookup(words[i]);
+            if (translated.empty()) {
+                prefixOk = false;
+                break;
+            }
+            if (!prefix.empty()) prefix += L"，";
+            prefix += translated;
+        }
+        if (prefixOk && !prefix.empty()) return prefix + L"，" + structured;
     }
 
     if (lower.find(L"cannot connect to server") != std::wstring::npos ||
