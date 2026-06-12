@@ -168,6 +168,8 @@ bool ProviderLeftoverToken(const std::wstring& token, std::wstring& translated, 
     struct Item { const wchar_t* key; const wchar_t* value; bool pauseAfter; };
     static const Item items[] = {
         { L"wtf", L"什么鬼", true },
+        { L"wdf", L"什么鬼", true },
+        { L"tf", L"什么鬼", true },
         { L"omg", L"天啊", true },
         { L"ffs", L"真服了", true },
         { L"lol", L"哈哈", true },
@@ -209,6 +211,32 @@ bool ProviderLeftoverToken(const std::wstring& token, std::wstring& translated, 
         }
     }
     return false;
+}
+
+bool IsDigitsOnly(const std::wstring& value)
+{
+    if (value.empty()) return false;
+    for (wchar_t ch : value) {
+        if (ch < L'0' || ch > L'9') return false;
+    }
+    return true;
+}
+
+std::vector<std::wstring> SplitWords(const std::wstring& value)
+{
+    std::vector<std::wstring> words;
+    std::wstring token;
+    for (size_t i = 0; i <= value.size(); ++i) {
+        wchar_t ch = (i < value.size()) ? value[i] : L' ';
+        if (iswspace(ch)) {
+            token = TrimChatEdgePunctuation(token);
+            if (!token.empty()) words.push_back(token);
+            token.clear();
+        } else {
+            token.push_back(ch);
+        }
+    }
+    return words;
 }
 
 bool NeedsPauseAfterToken(wchar_t next)
@@ -306,6 +334,8 @@ std::wstring ShortPhraseFallback(const std::wstring& input)
         { L"omg", L"天啊" },
         { L"ffs", L"真服了" },
         { L"wtf", L"什么鬼" },
+        { L"wdf", L"什么鬼" },
+        { L"tf", L"什么鬼" },
         { L"fk", L"靠" },
         { L"fck", L"靠" },
         { L"fuck", L"操" },
@@ -346,6 +376,13 @@ std::wstring ShortPhraseFallback(const std::wstring& input)
         return L"抱歉，请";
     }
 
+    std::vector<std::wstring> words = SplitWords(lower);
+    if (words.size() >= 2 && words[0] == L"rec" && words[1] == L"ban") {
+        std::wstring out = L"已录屏，等封禁";
+        if (words.size() >= 3 && IsDigitsOnly(words[2])) out += L" " + words[2];
+        return out;
+    }
+
     if (lower.find(L"cannot connect to server") != std::wstring::npos ||
         lower.find(L"can't connect to server") != std::wstring::npos ||
         lower.find(L"can not connect to server") != std::wstring::npos) {
@@ -371,23 +408,13 @@ std::wstring ShortPhraseFallback(const std::wstring& input)
     }
 
     std::vector<std::wstring> tokenTranslations;
-    std::wstring token;
-    for (size_t i = 0; i <= lower.size(); ++i) {
-        wchar_t ch = (i < lower.size()) ? lower[i] : L' ';
-        if (iswspace(ch)) {
-            token = TrimChatEdgePunctuation(token);
-            if (!token.empty()) {
-                std::wstring translated = exactLookup(token);
-                if (translated.empty()) {
-                    tokenTranslations.clear();
-                    break;
-                }
-                tokenTranslations.push_back(translated);
-            }
-            token.clear();
-        } else {
-            token.push_back(ch);
+    for (const auto& word : words) {
+        std::wstring translated = exactLookup(word);
+        if (translated.empty()) {
+            tokenTranslations.clear();
+            break;
         }
+        tokenTranslations.push_back(translated);
     }
     if (tokenTranslations.size() >= 2 && tokenTranslations.size() <= 5) {
         std::wstring out;
