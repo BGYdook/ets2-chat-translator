@@ -77,6 +77,26 @@ std::wstring NormalizeChatForDictionary(const std::wstring& value)
     return text::Trim(out);
 }
 
+std::wstring SqueezeRepeatedAsciiLetters(const std::wstring& value, int keep)
+{
+    std::wstring out;
+    out.reserve(value.size());
+    wchar_t last = 0;
+    int run = 0;
+    for (wchar_t ch : value) {
+        bool asciiLetter = (ch >= L'a' && ch <= L'z') || (ch >= L'A' && ch <= L'Z');
+        if (asciiLetter && ch == last) {
+            ++run;
+            if (run <= keep) out.push_back(ch);
+            continue;
+        }
+        last = asciiLetter ? ch : 0;
+        run = asciiLetter ? 1 : 0;
+        out.push_back(ch);
+    }
+    return out;
+}
+
 std::wstring CompareKey(const std::wstring& value)
 {
     std::wstring out;
@@ -142,6 +162,7 @@ bool IsAsciiTokenChar(wchar_t ch)
 bool ProviderLeftoverToken(const std::wstring& token, std::wstring& translated, bool& pauseAfter)
 {
     std::wstring key = TrimChatEdgePunctuation(NormalizeChatForDictionary(token));
+    std::wstring squeezedKey = SqueezeRepeatedAsciiLetters(key, 1);
     pauseAfter = false;
 
     struct Item { const wchar_t* key; const wchar_t* value; bool pauseAfter; };
@@ -165,6 +186,11 @@ bool ProviderLeftoverToken(const std::wstring& token, std::wstring& translated, 
         { L"idc", L"无所谓", true },
         { L"gg", L"打得好", true },
         { L"wp", L"打得好", true },
+        { L"bro", L"兄弟", true },
+        { L"bruh", L"兄弟", true },
+        { L"dude", L"老兄", true },
+        { L"mate", L"伙计", true },
+        { L"man", L"兄弟", true },
         { L"fk", L"靠", true },
         { L"fck", L"靠", true },
         { L"fuck", L"操", true },
@@ -176,7 +202,7 @@ bool ProviderLeftoverToken(const std::wstring& token, std::wstring& translated, 
     };
 
     for (const auto& item : items) {
-        if (key == item.key) {
+        if (key == item.key || squeezedKey == item.key) {
             translated = item.value;
             pauseAfter = item.pauseAfter;
             return true;
@@ -296,6 +322,11 @@ std::wstring ShortPhraseFallback(const std::wstring& input)
         { L"idc", L"无所谓" },
         { L"ikr", L"就是说" },
         { L"asap", L"尽快" },
+        { L"bro", L"兄弟" },
+        { L"bruh", L"兄弟" },
+        { L"dude", L"老兄" },
+        { L"mate", L"伙计" },
+        { L"man", L"兄弟" },
         { L"bb", L"再见" },
         { L"k", L"好" },
         { L"kk", L"好" },
@@ -304,8 +335,9 @@ std::wstring ShortPhraseFallback(const std::wstring& input)
     };
 
     auto exactLookup = [&](const std::wstring& key) -> std::wstring {
+        std::wstring squeezedKey = SqueezeRepeatedAsciiLetters(key, 1);
         for (const auto& item : exact) {
-            if (key == item.key) return item.value;
+            if (key == item.key || squeezedKey == item.key) return item.value;
         }
         return L"";
     };
