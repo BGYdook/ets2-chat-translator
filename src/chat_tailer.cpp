@@ -3,6 +3,12 @@
 
 #include <sstream>
 
+namespace
+{
+constexpr DWORD kMissingLogPollMs = 500;
+constexpr DWORD kActiveLogPollMs = 80;
+}
+
 ChatTailer::ChatTailer()
 {
     wake_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
@@ -59,7 +65,7 @@ void ChatTailer::Run()
             nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
 
         if (h == INVALID_HANDLE_VALUE) {
-            if (wake_ && WaitForSingleObject(wake_, 1500) == WAIT_OBJECT_0) break;
+            if (wake_ && WaitForSingleObject(wake_, kMissingLogPollMs) == WAIT_OBJECT_0) break;
             continue;
         }
 
@@ -88,7 +94,7 @@ void ChatTailer::Run()
         }
 
         CloseHandle(h);
-        if (wake_ && WaitForSingleObject(wake_, 350) == WAIT_OBJECT_0) break;
+        if (wake_ && WaitForSingleObject(wake_, kActiveLogPollMs) == WAIT_OBJECT_0) break;
     }
 }
 
