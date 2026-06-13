@@ -7,5 +7,6 @@ contextBridge.exposeInMainWorld('managerApi', {
   installDll: (game, gamePath) => ipcRenderer.invoke('install-dll', game, gamePath),
   uninstallDll: (game, gamePath) => ipcRenderer.invoke('uninstall-dll', game, gamePath),
   readConfig: (game, gamePath) => ipcRenderer.invoke('read-config', game, gamePath),
-  writeConfig: (game, gamePath, jsonText) => ipcRenderer.invoke('write-config', game, gamePath, jsonText)
+  writeConfig: (game, gamePath, jsonText) => ipcRenderer.invoke('write-config', game, gamePath, jsonText),
+  testConfig: (jsonText) => ipcRenderer.invoke('test-config', jsonText)
 });

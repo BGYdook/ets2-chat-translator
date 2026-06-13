@@ -29,7 +29,9 @@ const els = {
   enableFallbacks: document.querySelector('#enableFallbacks'),
   loadConfigBtn: document.querySelector('#loadConfigBtn'),
   previewBtn: document.querySelector('#previewBtn'),
+  testConfigBtn: document.querySelector('#testConfigBtn'),
   saveConfigBtn: document.querySelector('#saveConfigBtn'),
+  testResult: document.querySelector('#testResult'),
   preview: document.querySelector('#preview')
 };
 
@@ -203,6 +205,40 @@ function setStatus(text) {
   els.statusPill.textContent = text;
 }
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function renderTestResult(result) {
+  const rows = (result.results || []).map((item) => {
+    const state = item.ok ? 'ok' : 'fail';
+    const status = item.status ? `HTTP ${item.status}` : '未请求';
+    const elapsed = item.elapsed_ms ? `${item.elapsed_ms}ms` : '-';
+    const error = item.error ? `<div class="test-error">${escapeHtml(item.error)}</div>` : '';
+    return `
+      <div class="test-row ${state}">
+        <div class="test-main">
+          <span class="test-dot"></span>
+          <strong>${escapeHtml(item.label)}</strong>
+          <span>${escapeHtml(item.kind)}</span>
+        </div>
+        <div class="test-meta">${status} · ${elapsed}</div>
+        ${error}
+      </div>
+    `;
+  }).join('');
+
+  els.testResult.innerHTML = `
+    <div class="test-summary ${result.ok ? 'ok' : 'fail'}">${escapeHtml(result.summary || '测试完成')}</div>
+    ${rows}
+  `;
+}
+
 function updatePreview() {
   const selected = PROVIDER_PRESETS[els.preset.value] || PROVIDER_PRESETS.free;
   els.llmFields.style.display = selected.kind ? 'grid' : 'none';
@@ -321,6 +357,25 @@ els.uninstallBtn.addEventListener('click', async () => {
 
 els.loadConfigBtn.addEventListener('click', () => loadInstalledConfig(false));
 els.previewBtn.addEventListener('click', updatePreview);
+
+els.testConfigBtn.addEventListener('click', async () => {
+  try {
+    updatePreview();
+    JSON.parse(els.preview.value);
+    els.testConfigBtn.disabled = true;
+    els.testConfigBtn.textContent = '测试中...';
+    els.testResult.innerHTML = '<div class="test-summary">正在测试已启用 Provider...</div>';
+    const result = await window.managerApi.testConfig(els.preview.value);
+    renderTestResult(result);
+    setStatus(result.ok ? `测试完成：${result.summary}` : `测试失败：${result.summary}`);
+  } catch (error) {
+    els.testResult.innerHTML = `<div class="test-summary fail">${escapeHtml(error.message)}</div>`;
+    setStatus(`测试失败：${error.message}`);
+  } finally {
+    els.testConfigBtn.disabled = false;
+    els.testConfigBtn.textContent = '测试配置';
+  }
+});
 
 els.saveConfigBtn.addEventListener('click', async () => {
   try {

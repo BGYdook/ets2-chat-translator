@@ -421,6 +421,67 @@ button {
   margin-right: auto;
 }
 
+.test-result {
+  margin-top: 16px;
+  display: grid;
+  gap: 8px;
+}
+
+.test-summary,
+.test-row {
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
+.test-summary.ok,
+.test-row.ok {
+  border-color: rgba(16, 185, 129, 0.25);
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.test-summary.fail,
+.test-row.fail {
+  border-color: rgba(239, 68, 68, 0.25);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.test-main,
+.test-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.test-main span:last-child,
+.test-meta {
+  color: var(--text-muted);
+}
+
+.test-meta {
+  margin-top: 4px;
+}
+
+.test-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--danger);
+}
+
+.test-row.ok .test-dot {
+  background: var(--success);
+}
+
+.test-error {
+  margin-top: 6px;
+  color: var(--danger-hover);
+  line-height: 1.45;
+  word-break: break-word;
+}
+
 /* LLM Fields Inset */
 .glass-inset {
   background: rgba(0, 0, 0, 0.2);

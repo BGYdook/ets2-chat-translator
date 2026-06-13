@@ -2,6 +2,7 @@ const { app, BrowserWindow, dialog, ipcMain } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const childProcess = require('child_process');
+const crypto = require('crypto');
 
 const DLL_NAME = 'ets2_chat_translator.dll';
 const CONFIG_NAME = 'ets2_chat_translator_config.json';
@@ -104,6 +105,532 @@ function configPath(ets2Path) {
   return path.join(pluginDir(ets2Path), CONFIG_NAME);
 }
 
+function compactText(value, max = 260) {
+  return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
+}
+
+function redactSecrets(text, provider) {
+  let out = String(text || '');
+  for (const secret of [provider?.api_key, provider?.api_secret]) {
+    if (secret && secret.length >= 6) out = out.split(secret).join('[已隐藏]');
+  }
+  return out;
+}
+
+function joinProviderUrl(baseUrl, fallback, pathWithQuery) {
+  const u = new URL(baseUrl || fallback);
+  const prefix = u.pathname.replace(/\/+$/, '');
+  return `${u.protocol}//${u.host}${prefix}${pathWithQuery}`;
+}
+
+function jsonString(body, keys) {
+  try {
+    const value = JSON.parse(body || '{}');
+    const stack = [value];
+    while (stack.length) {
+      const item = stack.shift();
+      if (!item || typeof item !== 'object') continue;
+      for (const key of keys) {
+        if (typeof item[key] === 'string' && item[key]) return item[key];
+      }
+      if (Array.isArray(item)) stack.push(...item);
+      else stack.push(...Object.values(item));
+    }
+  } catch {
+    return '';
+  }
+  return '';
+}
+
+function errorFromReply(reply, provider) {
+  if (reply.error) return reply.error;
+  const parsed = jsonString(reply.body, [
+    'message',
+    'error',
+    'error_msg',
+    'errorMessage',
+    'ErrorMessage',
+    'Code',
+    'code',
+    'type'
+  ]);
+  return redactSecrets(parsed || compactText(reply.body), provider);
+}
+
+function requestText(method, urlText, headers = {}, body = '', timeoutMs = 5000) {
+  return new Promise((resolve) => {
+    const started = Date.now();
+    let url;
+    try {
+      url = new URL(urlText);
+    } catch (error) {
+      resolve({ status: 0, body: '', error: `bad url: ${error.message}`, elapsedMs: 0 });
+      return;
+    }
+
+    const lib = url.protocol === 'http:' ? require('http') : require('https');
+    const data = body ? Buffer.from(body, 'utf8') : null;
+    const req = lib.request(url, {
+      method,
+      headers: {
+        ...headers,
+        ...(data ? { 'Content-Length': data.length } : {})
+      },
+      timeout: Math.max(1500, Math.min(6000, timeoutMs || 5000))
+    }, (res) => {
+      let responseBody = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk) => {
+        if (responseBody.length < 5000) responseBody += chunk;
+      });
+      res.on('end', () => {
+        resolve({
+          status: res.statusCode || 0,
+          body: responseBody,
+          elapsedMs: Date.now() - started
+        });
+      });
+    });
+    req.on('timeout', () => req.destroy(new Error('timeout')));
+    req.on('error', (error) => {
+      resolve({ status: 0, body: '', error: error.message, elapsedMs: Date.now() - started });
+    });
+    if (data) req.write(data);
+    req.end();
+  });
+}
+
+function hmacHex(algorithm, key, value) {
+  return crypto.createHmac(algorithm, key).update(value).digest('hex');
+}
+
+function hmacBase64(algorithm, key, value) {
+  return crypto.createHmac(algorithm, key).update(value).digest('base64');
+}
+
+function sha256Hex(value) {
+  return crypto.createHash('sha256').update(value).digest('hex');
+}
+
+function md5Hex(value) {
+  return crypto.createHash('md5').update(value).digest('hex');
+}
+
+function rfc3986(value) {
+  return encodeURIComponent(String(value))
+    .replace(/[!'()*]/g, (ch) => `%${ch.charCodeAt(0).toString(16).toUpperCase()}`);
+}
+
+function sortedQuery(params) {
+  return Object.entries(params)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, value]) => `${rfc3986(key)}=${rfc3986(value)}`)
+    .join('&');
+}
+
+function dateUtc() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function iso8601Utc() {
+  return new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+}
+
+function compactIsoUtc() {
+  return new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+}
+
+function targetSimple(target) {
+  const value = String(target || 'zh-CN');
+  if (value === 'zh-CN' || value === 'zh-Hans') return 'zh';
+  return value;
+}
+
+function targetMicrosoft(target) {
+  const value = String(target || 'zh-CN');
+  if (value === 'zh' || value === 'zh-CN') return 'zh-Hans';
+  return value;
+}
+
+function targetBaidu(target) {
+  const value = String(target || 'zh-CN');
+  if (value === 'zh-CN' || value === 'zh-Hans') return 'zh';
+  return value;
+}
+
+function targetYoudao(target) {
+  const value = String(target || 'zh-CN');
+  if (value === 'zh-CN' || value === 'zh' || value === 'zh-Hans') return 'zh-CHS';
+  return value;
+}
+
+function targetDeepL(target) {
+  const value = String(target || 'zh-CN').toUpperCase();
+  if (value === 'ZH-CN' || value === 'ZH-HANS' || value === 'ZH') return 'ZH';
+  return value;
+}
+
+function sourceOrAuto(provider) {
+  return provider.source || provider.source_lang || 'auto';
+}
+
+function providerName(provider) {
+  return provider.label || provider.kind || 'Provider';
+}
+
+function missing(provider, fields) {
+  const names = fields.filter((field) => !provider[field]);
+  return names.length ? `缺少 ${names.join(', ')}` : '';
+}
+
+async function finishProviderTest(provider, runtime, request) {
+  const reply = await request();
+  const ok = reply.status >= 200 && reply.status < 300;
+  return {
+    label: providerName(provider),
+    kind: provider.kind || '',
+    ok,
+    status: reply.status,
+    elapsed_ms: reply.elapsedMs,
+    error: ok ? '' : errorFromReply(reply, provider),
+    sample: runtime.sampleText
+  };
+}
+
+async function testAnthropic(provider, runtime) {
+  const miss = missing(provider, ['api_key', 'model']);
+  if (miss) throw new Error(miss);
+  const body = JSON.stringify({
+    model: provider.model,
+    max_tokens: 96,
+    messages: [{ role: 'user', content: `Translate to ${runtime.target}: ${runtime.sampleText}` }]
+  });
+  return finishProviderTest(provider, runtime, () => requestText('POST',
+    joinProviderUrl(provider.base_url, 'https://api.anthropic.com/v1', '/messages'),
+    {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      'x-api-key': provider.api_key,
+      'anthropic-version': '2023-06-01'
+    },
+    body,
+    runtime.timeoutMs));
+}
+
+async function testOpenAI(provider, runtime) {
+  const miss = missing(provider, ['model']);
+  if (miss) throw new Error(miss);
+  const body = JSON.stringify({
+    model: provider.model,
+    temperature: 0,
+    messages: [
+      { role: 'system', content: `Translate chat into ${runtime.target}. Output only the translation.` },
+      { role: 'user', content: runtime.sampleText }
+    ]
+  });
+  const headers = {
+    'Content-Type': 'application/json',
+    Accept: 'application/json'
+  };
+  if (provider.api_key) headers.Authorization = `Bearer ${provider.api_key}`;
+  return finishProviderTest(provider, runtime, () => requestText('POST',
+    joinProviderUrl(provider.base_url, 'https://api.openai.com/v1', '/chat/completions'),
+    headers,
+    body,
+    runtime.timeoutMs));
+}
+
+async function testMyMemory(provider, runtime) {
+  const source = sourceOrAuto(provider) === 'auto' ? 'en' : sourceOrAuto(provider);
+  const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(runtime.sampleText)}&langpair=${encodeURIComponent(`${source}|${runtime.target}`)}`;
+  return finishProviderTest(provider, runtime, () => requestText('GET', url, { Accept: 'application/json' }, '', runtime.timeoutMs));
+}
+
+async function testAndeer(provider, runtime) {
+  const url = `https://api.andeer.top/API/fanyi2.php?msg=${encodeURIComponent(runtime.sampleText)}`;
+  return finishProviderTest(provider, runtime, () => requestText('GET', url, { Accept: 'application/json' }, '', runtime.timeoutMs));
+}
+
+async function testDeepL(provider, runtime) {
+  const miss = missing(provider, ['api_key']);
+  if (miss) throw new Error(miss);
+  const form = new URLSearchParams();
+  form.set('text', runtime.sampleText);
+  form.set('target_lang', targetDeepL(runtime.target));
+  if (sourceOrAuto(provider) !== 'auto') form.set('source_lang', sourceOrAuto(provider).toUpperCase());
+  return finishProviderTest(provider, runtime, () => requestText('POST',
+    joinProviderUrl(provider.base_url, 'https://api-free.deepl.com', '/v2/translate'),
+    {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Accept: 'application/json',
+      Authorization: `DeepL-Auth-Key ${provider.api_key}`
+    },
+    form.toString(),
+    runtime.timeoutMs));
+}
+
+async function testGoogle(provider, runtime) {
+  const miss = missing(provider, ['api_key']);
+  if (miss) throw new Error(miss);
+  const params = new URLSearchParams({
+    key: provider.api_key,
+    q: runtime.sampleText,
+    target: targetSimple(runtime.target),
+    format: 'text'
+  });
+  if (sourceOrAuto(provider) !== 'auto') params.set('source', sourceOrAuto(provider));
+  return finishProviderTest(provider, runtime, () => requestText('GET',
+    joinProviderUrl(provider.base_url, 'https://translation.googleapis.com', `/language/translate/v2?${params}`),
+    { Accept: 'application/json' },
+    '',
+    runtime.timeoutMs));
+}
+
+async function testLibre(provider, runtime) {
+  const body = {
+    q: runtime.sampleText,
+    source: sourceOrAuto(provider),
+    target: targetSimple(runtime.target),
+    format: 'text'
+  };
+  if (provider.api_key) body.api_key = provider.api_key;
+  return finishProviderTest(provider, runtime, () => requestText('POST',
+    joinProviderUrl(provider.base_url, 'https://libretranslate.com', '/translate'),
+    {
+      'Content-Type': 'application/json',
+      Accept: 'application/json'
+    },
+    JSON.stringify(body),
+    runtime.timeoutMs));
+}
+
+async function testMicrosoft(provider, runtime) {
+  const miss = missing(provider, ['api_key']);
+  if (miss) throw new Error(miss);
+  const params = new URLSearchParams({ 'api-version': '3.0', to: targetMicrosoft(runtime.target) });
+  if (sourceOrAuto(provider) !== 'auto') params.set('from', sourceOrAuto(provider));
+  const headers = {
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+    'Ocp-Apim-Subscription-Key': provider.api_key
+  };
+  if (provider.api_secret) headers['Ocp-Apim-Subscription-Region'] = provider.api_secret;
+  return finishProviderTest(provider, runtime, () => requestText('POST',
+    joinProviderUrl(provider.base_url, 'https://api.cognitive.microsofttranslator.com', `/translate?${params}`),
+    headers,
+    JSON.stringify([{ Text: runtime.sampleText }]),
+    runtime.timeoutMs));
+}
+
+async function testBaidu(provider, runtime) {
+  const miss = missing(provider, ['api_key', 'api_secret']);
+  if (miss) throw new Error(miss);
+  const salt = String(Date.now());
+  const params = new URLSearchParams({
+    q: runtime.sampleText,
+    from: sourceOrAuto(provider),
+    to: targetBaidu(runtime.target),
+    appid: provider.api_key,
+    salt,
+    sign: md5Hex(`${provider.api_key}${runtime.sampleText}${salt}${provider.api_secret}`)
+  });
+  return finishProviderTest(provider, runtime, () => requestText('GET',
+    joinProviderUrl(provider.base_url, 'https://fanyi-api.baidu.com', `/api/trans/vip/translate?${params}`),
+    { Accept: 'application/json' },
+    '',
+    runtime.timeoutMs));
+}
+
+async function testYoudao(provider, runtime) {
+  const miss = missing(provider, ['api_key', 'api_secret']);
+  if (miss) throw new Error(miss);
+  const salt = String(Date.now());
+  const curtime = Math.floor(Date.now() / 1000).toString();
+  const q = runtime.sampleText;
+  const input = q.length <= 20 ? q : `${q.slice(0, 10)}${q.length}${q.slice(-10)}`;
+  const form = new URLSearchParams({
+    q,
+    from: sourceOrAuto(provider),
+    to: targetYoudao(runtime.target),
+    appKey: provider.api_key,
+    salt,
+    sign: sha256Hex(`${provider.api_key}${input}${salt}${curtime}${provider.api_secret}`),
+    signType: 'v3',
+    curtime
+  });
+  return finishProviderTest(provider, runtime, () => requestText('POST',
+    joinProviderUrl(provider.base_url, 'https://openapi.youdao.com', '/api'),
+    {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Accept: 'application/json'
+    },
+    form.toString(),
+    runtime.timeoutMs));
+}
+
+async function testTencent(provider, runtime) {
+  const miss = missing(provider, ['api_key', 'api_secret']);
+  if (miss) throw new Error(miss);
+  const base = new URL(provider.base_url || 'https://tmt.tencentcloudapi.com');
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const date = dateUtc();
+  const service = 'tmt';
+  const region = provider.model || 'ap-guangzhou';
+  const body = JSON.stringify({
+    SourceText: runtime.sampleText,
+    Source: sourceOrAuto(provider) === 'auto' ? 'auto' : sourceOrAuto(provider),
+    Target: targetSimple(runtime.target),
+    ProjectId: 0
+  });
+  const canonicalHeaders = `content-type:application/json\nhost:${base.host}\n`;
+  const signedHeaders = 'content-type;host';
+  const credentialScope = `${date}/${service}/tc3_request`;
+  const canonicalRequest = `POST\n/\n\n${canonicalHeaders}\n${signedHeaders}\n${sha256Hex(body)}`;
+  const stringToSign = `TC3-HMAC-SHA256\n${timestamp}\n${credentialScope}\n${sha256Hex(canonicalRequest)}`;
+  const dateKey = crypto.createHmac('sha256', `TC3${provider.api_secret}`).update(date).digest();
+  const serviceKey = crypto.createHmac('sha256', dateKey).update(service).digest();
+  const signingKey = crypto.createHmac('sha256', serviceKey).update('tc3_request').digest();
+  const signature = crypto.createHmac('sha256', signingKey).update(stringToSign).digest('hex');
+  const authorization = `TC3-HMAC-SHA256 Credential=${provider.api_key}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+  return finishProviderTest(provider, runtime, () => requestText('POST',
+    `${base.protocol}//${base.host}${base.pathname === '/' ? '' : base.pathname}`,
+    {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      Authorization: authorization,
+      Host: base.host,
+      'X-TC-Action': 'TextTranslate',
+      'X-TC-Version': '2018-03-21',
+      'X-TC-Timestamp': timestamp,
+      'X-TC-Region': region
+    },
+    body,
+    runtime.timeoutMs));
+}
+
+async function testAliyun(provider, runtime) {
+  const miss = missing(provider, ['api_key', 'api_secret']);
+  if (miss) throw new Error(miss);
+  const scene = provider.model || 'general';
+  const params = {
+    AccessKeyId: provider.api_key,
+    Action: 'TranslateGeneral',
+    Format: 'JSON',
+    FormatType: 'text',
+    RegionId: 'cn-hangzhou',
+    Scene: scene,
+    SignatureMethod: 'HMAC-SHA1',
+    SignatureNonce: String(Date.now()),
+    SignatureVersion: '1.0',
+    SourceLanguage: sourceOrAuto(provider) === 'auto' ? 'auto' : sourceOrAuto(provider),
+    SourceText: runtime.sampleText,
+    TargetLanguage: targetSimple(runtime.target),
+    Timestamp: iso8601Utc(),
+    Version: '2018-10-12'
+  };
+  const canonical = sortedQuery(params);
+  const signature = hmacBase64('sha1', `${provider.api_secret}&`, `GET&%2F&${rfc3986(canonical)}`);
+  return finishProviderTest(provider, runtime, () => requestText('GET',
+    joinProviderUrl(provider.base_url, 'https://mt.cn-hangzhou.aliyuncs.com', `/?${canonical}&Signature=${rfc3986(signature)}`),
+    { Accept: 'application/json' },
+    '',
+    runtime.timeoutMs));
+}
+
+async function testVolcengine(provider, runtime) {
+  const miss = missing(provider, ['api_key', 'api_secret']);
+  if (miss) throw new Error(miss);
+  const base = new URL(provider.base_url || 'https://translate.volcengineapi.com');
+  const region = provider.model || 'cn-north-1';
+  const date = dateUtc().replace(/-/g, '');
+  const amzDate = compactIsoUtc();
+  const bodyObject = {
+    TextList: [runtime.sampleText],
+    TargetLanguage: targetSimple(runtime.target)
+  };
+  if (sourceOrAuto(provider) !== 'auto') bodyObject.SourceLanguage = sourceOrAuto(provider);
+  const body = JSON.stringify(bodyObject);
+  const payloadHash = sha256Hex(body);
+  const canonicalHeaders = `content-type:application/json\nhost:${base.host}\nx-content-sha256:${payloadHash}\nx-date:${amzDate}\n`;
+  const signedHeaders = 'content-type;host;x-content-sha256;x-date';
+  const canonicalRequest = `POST\n/\nAction=TranslateText&Version=2020-06-01\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
+  const credentialScope = `${date}/${region}/translate/request`;
+  const stringToSign = `HMAC-SHA256\n${amzDate}\n${credentialScope}\n${sha256Hex(canonicalRequest)}`;
+  const dateKey = crypto.createHmac('sha256', provider.api_secret).update(date).digest();
+  const regionKey = crypto.createHmac('sha256', dateKey).update(region).digest();
+  const serviceKey = crypto.createHmac('sha256', regionKey).update('translate').digest();
+  const signingKey = crypto.createHmac('sha256', serviceKey).update('request').digest();
+  const signature = crypto.createHmac('sha256', signingKey).update(stringToSign).digest('hex');
+  const authorization = `HMAC-SHA256 Credential=${provider.api_key}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+  return finishProviderTest(provider, runtime, () => requestText('POST',
+    `${base.protocol}//${base.host}/?Action=TranslateText&Version=2020-06-01`,
+    {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      Host: base.host,
+      'X-Date': amzDate,
+      'X-Content-Sha256': payloadHash,
+      Authorization: authorization
+    },
+    body,
+    runtime.timeoutMs));
+}
+
+async function testProvider(provider, runtime) {
+  const kind = String(provider.kind || '').toLowerCase();
+  try {
+    if (kind === 'anthropic' || kind === 'claude' || kind === 'anthropic_messages') return await testAnthropic(provider, runtime);
+    if (kind === 'openai_compatible' || kind === 'openai' || kind === 'chat_completions') return await testOpenAI(provider, runtime);
+    if (kind === 'mymemory') return await testMyMemory(provider, runtime);
+    if (kind === 'andeer') return await testAndeer(provider, runtime);
+    if (kind === 'deepl') return await testDeepL(provider, runtime);
+    if (kind === 'google_cloud' || kind === 'google_translate') return await testGoogle(provider, runtime);
+    if (kind === 'libretranslate' || kind === 'libre_translate') return await testLibre(provider, runtime);
+    if (kind === 'microsoft' || kind === 'azure_translator') return await testMicrosoft(provider, runtime);
+    if (kind === 'baidu' || kind === 'baidu_translate') return await testBaidu(provider, runtime);
+    if (kind === 'youdao') return await testYoudao(provider, runtime);
+    if (kind === 'tencent' || kind === 'tencent_cloud' || kind === 'tencent_tmt') return await testTencent(provider, runtime);
+    if (kind === 'aliyun' || kind === 'alibaba' || kind === 'alibaba_cloud' || kind === 'alimt') return await testAliyun(provider, runtime);
+    if (kind === 'volcengine' || kind === 'volc' || kind === 'volc_translate' || kind === 'huoshan') return await testVolcengine(provider, runtime);
+    throw new Error(`暂不支持测试 kind=${provider.kind || '(empty)'}`);
+  } catch (error) {
+    return {
+      label: providerName(provider),
+      kind: provider.kind || '',
+      ok: false,
+      status: 0,
+      elapsed_ms: 0,
+      error: redactSecrets(error.message, provider),
+      sample: runtime.sampleText
+    };
+  }
+}
+
+async function testConfigText(jsonText) {
+  const config = JSON.parse(jsonText);
+  const providers = (config.providers || []).filter((provider) => provider && provider.enabled && provider.kind);
+  const runtime = {
+    target: config.target_lang || 'zh-CN',
+    timeoutMs: Math.max(1500, Math.min(6000, config.timeout_ms || 5000)),
+    sampleText: 'hello'
+  };
+  if (!providers.length) {
+    return { ok: false, summary: '没有启用任何 Provider', results: [] };
+  }
+
+  const results = [];
+  for (const provider of providers) {
+    results.push(await testProvider(provider, runtime));
+  }
+
+  const okCount = results.filter((item) => item.ok).length;
+  return {
+    ok: okCount > 0,
+    summary: `${okCount}/${results.length} 个 Provider 可用`,
+    results
+  };
+}
+
 function looksLikeGame(gamePath, game) {
   if (!gamePath || !fs.existsSync(gamePath)) return false;
   const def = gameDef(game);
@@ -200,3 +727,5 @@ ipcMain.handle('write-config', (_event, game, ets2Path, jsonText) => {
   fs.writeFileSync(file, jsonText, 'utf8');
   return installState(game, ets2Path);
 });
+
+ipcMain.handle('test-config', (_event, jsonText) => testConfigText(jsonText));
