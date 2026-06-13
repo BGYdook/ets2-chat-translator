@@ -3,9 +3,142 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ETS2 Chat Translator Manager</title>
+    <title>TMP聊天翻译</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="./styles.css" />
+    <script>
+      if (!window.managerApi) {
+        console.log("Mocking managerApi for browser preview...");
+        const mockUpdateProxies = [
+          "github.chenc.dev",
+          "ghproxy.cfd",
+          "github.tbedu.top",
+          "ghproxy.cc",
+          "gh.monlor.com",
+          "cdn.akaere.online",
+          "gh.idayer.com",
+          "gh.llkk.cc",
+          "ghpxy.hwinzniej.top",
+          "github-proxy.memory-echoes.cn",
+          "git.yylx.win",
+          "gitproxy.mrhjx.cn",
+          "gh.fhjhy.top",
+          "gp.zkitefly.eu.org",
+          "gh-proxy.com",
+          "ghfile.geekertao.top",
+          "j.1lin.dpdns.org",
+          "ghproxy.imciel.com",
+          "github-proxy.teach-english.tech",
+          "gh.927223.xyz",
+          "github.ednovas.xyz",
+          "ghf.xn--eqrr82bzpe.top",
+          "gh.dpik.top",
+          "gh.jasonzeng.dev",
+          "gh.xxooo.cf",
+          "gh.bugdey.us.kg",
+          "ghm.078465.xyz",
+          "j.1win.ggff.net",
+          "tvv.tw",
+          "gitproxy.127731.xyz",
+          "gh.inkchills.cn",
+          "ghproxy.cxkpro.top",
+          "gh.sixyin.com",
+          "github.geekery.cn",
+          "git.669966.xyz",
+          "gh.5050net.cn",
+          "gh.felicity.ac.cn",
+          "github.dpik.top",
+          "ghp.keleyaa.com",
+          "gh.wsmdn.dpdns.org",
+          "ghproxy.monkeyray.net",
+          "fastgit.cc",
+          "gh.catmak.name",
+          "gh.noki.icu"
+        ].map((host) => ({ id: host, label: host, baseUrl: `https://${host}` })).concat([
+          { id: "direct", label: "GitHub 直连", baseUrl: "" }
+        ]);
+        window.managerApi = {
+          detectPath: async () => "D:\\SteamLibrary\\steamapps\\common\\Euro Truck Simulator 2",
+          browsePath: async () => "D:\\SteamLibrary\\steamapps\\common\\Euro Truck Simulator 2",
+          state: async () => ({ text: "已安装 (v0.3.5)", pluginDir: "D:\\SteamLibrary\\steamapps\\common\\Euro Truck Simulator 2\\bin\\win_x64\\plugins" }),
+          installDll: async () => {},
+          uninstallDll: async () => {},
+          readConfig: async () => JSON.stringify({
+            target_lang: "zh-CN",
+            overlay_hotkey: "Ctrl+Shift+T",
+            workers: 8,
+            queue_limit: 1000,
+            cache_limit: 1500,
+            timeout_ms: 5000,
+            font_size: 18,
+            overlay_opacity: 98,
+            providers: [
+              {
+                kind: "anthropic",
+                label: "Anthropic",
+                enabled: true,
+                base_url: "https://api.anthropic.com/v1",
+                api_key: "sk-ant-xxxxxxxxxxxxxxxxxxxxxxxxxx",
+                api_secret: "",
+                model: "claude-3-5-haiku-latest",
+                source: "auto",
+                target: "zh-CN"
+              }
+            ]
+          }, null, 2),
+          writeConfig: async () => {},
+          testConfig: async () => ({ ok: true, summary: "所有测试均已通过", results: [{ label: "Anthropic", kind: "anthropic", ok: true, status: 200, elapsed_ms: 245 }] }),
+          listPresets: async () => [
+            { name: "DeepSeek 官方", config: { target_lang: "zh-CN", overlay_hotkey: "Ctrl+Shift+T", workers: 4, queue_limit: 500, cache_limit: 1000, timeout_ms: 4000, font_size: 18, overlay_opacity: 95, providers: [{ kind: "deepseek", label: "DeepSeek", enabled: true, base_url: "https://api.deepseek.com", api_key: "sk-xxxxxxxx", model: "deepseek-v4-flash", source: "auto", target: "zh-CN" }] } },
+            { name: "百度翻译 个人", config: { target_lang: "zh-CN", overlay_hotkey: "Ctrl+Shift+T", workers: 8, queue_limit: 1000, cache_limit: 1500, timeout_ms: 5000, font_size: 16, overlay_opacity: 90, providers: [{ kind: "baidu", label: "百度翻译", enabled: true, base_url: "https://fanyi-api.baidu.com", api_key: "appid", api_secret: "secret", model: "", source: "auto", target: "zh-CN" }] } }
+          ],
+          savePreset: async () => {},
+          deletePreset: async () => {},
+          getUpdateOptions: async () => ({
+            version: "0.3.5",
+            proxies: mockUpdateProxies,
+            settings: {
+              proxyMode: "auto",
+              customProxyUrl: "",
+              proxyId: "ghproxy.cc",
+              lastFastProxyId: "ghproxy.cc"
+            }
+          }),
+          saveUpdateSettings: async (settings) => settings,
+          speedTestUpdateProxies: async () => {
+            const results = mockUpdateProxies.map((proxy, index) => ({
+              id: proxy.id,
+              label: proxy.label,
+              elapsedMs: index < 28 ? 180 + index * 37 : 3500,
+              status: index < 28 ? 302 : 0,
+              ok: index < 28,
+              error: index < 28 ? "" : "超时"
+            })).sort((a, b) => {
+              if (a.ok !== b.ok) return a.ok ? -1 : 1;
+              return a.elapsedMs - b.elapsedMs;
+            });
+            return {
+              fastest: results.find((item) => item.ok),
+              results
+            };
+          },
+          checkUpdate: async () => ({
+            currentVersion: "0.3.5",
+            latestVersion: "0.3.6",
+            hasUpdate: true,
+            proxyLabel: "ghproxy.cc",
+            elapsedMs: 340,
+            asset: {
+              downloadUrl: "https://ghproxy.cc/https://github.com/xxxxx/releases/download/v0.3.6/setup.exe",
+              name: "setup.exe",
+              sizeText: "14.5 MB"
+            },
+            body: "### v0.3.6 更新日志\n\n- 优化翻译响应速度\n- 修复偶尔卡顿的 Bug\n- 增强了悬浮窗的稳定性\n- 增加了自定义翻译前缀的支持"
+          }),
+          downloadUpdate: async () => ({ bytesText: "14.5 MB", proxyLabel: "ghproxy.cc" })
+        };
+      }
+    </script>
   </head>
   <body>
     <div class="background-effects">
@@ -17,7 +150,7 @@
     <main class="shell">
       <header class="topbar glass-panel">
         <div class="header-content">
-          <h1>Truck Translator <span class="accent">Manager</span></h1>
+          <h1>TMP <span class="accent">聊天翻译</span></h1>
           <p>安装插件 DLL，管理翻译配置。</p>
         </div>
         <div id="statusPill" class="pill">准备就绪</div>
@@ -269,12 +402,21 @@
         <div class="panel glass-panel preview-panel">
           <div class="section-title">
             <div class="title-with-icon">
+              <div class="mac-dots">
+                <span class="mac-dot dot-red"></span>
+                <span class="mac-dot dot-yellow"></span>
+                <span class="mac-dot dot-green"></span>
+              </div>
               <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
               <h2>配置预览</h2>
             </div>
             <span class="sub-text filename">config.json</span>
           </div>
           <div class="editor-container">
+            <button id="copyPreviewBtn" class="copy-badge-btn" type="button" title="复制到剪贴板">
+              <svg class="copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+              <span>复制</span>
+            </button>
             <textarea id="preview" spellcheck="false"></textarea>
           </div>
         </div>

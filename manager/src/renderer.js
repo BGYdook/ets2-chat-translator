@@ -836,6 +836,26 @@ document.querySelectorAll('.preset-btn').forEach(btn => {
   });
 });
 
+const copyPreviewBtn = document.querySelector('#copyPreviewBtn');
+if (copyPreviewBtn) {
+  copyPreviewBtn.addEventListener('click', async () => {
+    try {
+      const text = els.preview.value;
+      await navigator.clipboard.writeText(text);
+      const span = copyPreviewBtn.querySelector('span');
+      const originalText = span.textContent;
+      span.textContent = '已复制!';
+      copyPreviewBtn.classList.add('copied');
+      setTimeout(() => {
+        span.textContent = originalText;
+        copyPreviewBtn.classList.remove('copied');
+      }, 2000);
+    } catch (err) {
+      setStatus(`复制失败: ${err.message}`);
+    }
+  });
+}
+
 (async function init() {
   els.ets2Path.value = await window.managerApi.detectPath(currentGame);
   await initUpdatePanel();

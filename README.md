@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🎮 ETS2 / ATS TruckersMP Chat Translator
+# TruckersMP 聊天翻译
 
 <p align="center">
   <img src="https://img.shields.io/badge/Platform-Windows%20x64-blue?style=for-the-badge&logo=windows" alt="Platform">
@@ -103,7 +103,7 @@ graph TD
 ```
 
 1. **下载并运行安装包**：
-   双击运行 `build\installer\ETS2-Chat-Translator-Manager-Setup-0.3.5.exe` 进行安装。
+   双击运行 `build\installer\ETS2-Chat-Translator-Manager-Setup-0.3.6.exe` 进行安装。
 2. **打开管理器**：启动安装好的 `ETS2 Chat Translator Manager`。
 3. **识别游戏目录**：选择对应的游戏（ETS2 或 ATS），管理器会尝试自动定位。若未找到，可手动选择游戏主程序所在的 bin 目录。
 4. **一键部署 DLL**：点击 `安装 / 更新 DLL` 按钮。
@@ -129,33 +129,9 @@ graph TD
 插件内置了极具鲁棒性的**多国语言自动检测与分层处理**，能精准识别 TruckersMP 复杂的国际化聊天环境（支持英语、土耳其语、俄语、波兰语、德语等）。
 
 <details>
-<summary><b>🤖 1. DeepSeek 官方接口 (推荐：低延迟、高性价比)</b></summary>
+<summary><b>🤖 1. OpenAI 兼容协议 (支持第三方中转与本地大模型)</b></summary>
 
-**获取步骤：**
-1. 访问 [DeepSeek 开放平台](https://platform.deepseek.com/) 注册账号。
-2. 进入 API Keys 页面，创建并复制您的密钥。
-
-**配置模板 (`kind: "deepseek"`)：**
-* **Base URL**: `https://api.deepseek.com`
-* **推荐模型**: `deepseek-v4-flash` (速度极快，适合聊天翻译)
-* *注：插件会自动为 DeepSeek 禁用思考（thinking）过程，以换取最低的延迟。*
-
-```json
-{
-  "kind": "deepseek",
-  "label": "DeepSeek",
-  "enabled": true,
-  "base_url": "https://api.deepseek.com",
-  "api_key": "sk-xxxxxxxxxxxxxxxxxxxxxxxx",
-  "model": "deepseek-v4-flash",
-  "source": "auto",
-  "target": "zh-CN"
-}
-```
-</details>
-
-<details>
-<summary><b>🤖 2. OpenAI 兼容协议 (支持第三方中转与本地大模型)</b></summary>
+推荐：低延迟、高性价比。
 
 **适用场景：**
 * **OpenAI 官方**: 访问 [OpenAI Platform](https://platform.openai.com/api-keys) 获取。
@@ -180,7 +156,9 @@ graph TD
 </details>
 
 <details>
-<summary><b>🧠 3. Anthropic Claude 接口 (高端机机翻体验)</b></summary>
+<summary><b>🧠 2. Anthropic Claude 接口</b></summary>
+
+高端机翻译体验。
 
 **获取步骤：**
 1. 访问 [Anthropic Console](https://console.anthropic.com/settings/keys) 注册并生成 Key。
@@ -196,6 +174,32 @@ graph TD
   "base_url": "https://api.anthropic.com/v1",
   "api_key": "sk-ant-xxxxxxxxxxxxxxxxxxxxxxxx",
   "model": "claude-4-5-haiku-latest",
+  "source": "auto",
+  "target": "zh-CN"
+}
+```
+</details>
+
+<details>
+<summary><b>🤖 3. DeepSeek 官方接口</b></summary>
+
+**获取步骤：**
+1. 访问 [DeepSeek 开放平台](https://platform.deepseek.com/) 注册账号。
+2. 进入 API Keys 页面，创建并复制您的密钥。
+
+**配置模板 (`kind: "deepseek"`)：**
+* **Base URL**: `https://api.deepseek.com`
+* **推荐模型**: `deepseek-v4-flash` (速度极快，适合聊天翻译)
+* *注：插件会自动为 DeepSeek 禁用思考（thinking）过程，以换取最低的延迟。*
+
+```json
+{
+  "kind": "deepseek",
+  "label": "DeepSeek",
+  "enabled": true,
+  "base_url": "https://api.deepseek.com",
+  "api_key": "sk-xxxxxxxxxxxxxxxxxxxxxxxx",
+  "model": "deepseek-v4-flash",
   "source": "auto",
   "target": "zh-CN"
 }
@@ -274,7 +278,7 @@ build/
 ├── ets2_chat_translator_app/                       # 绿色版管理器 (绿色免安装)
 │   └── ETS2 Chat Translator Manager.exe
 └── installer/
-    └── ETS2-Chat-Translator-Manager-Setup-0.3.5.exe # 独立安装包 (集成 NSIS)
+    └── ETS2-Chat-Translator-Manager-Setup-0.3.6.exe # 独立安装包 (集成 NSIS)
 ```
 
 ---
@@ -309,6 +313,12 @@ build/
 ---
 
 ## 🧾 历史版本更新
+
+### 🚀 v0.3.6
+* **🎨 管理器 UI 焕新**：调整整体视觉风格、顶部标题、配置预览区和按钮状态，界面更紧凑清晰。
+* **📋 配置预览增强**：新增一键复制配置预览内容，方便快速备份和排查。
+* **🌐 镜像列表修复**：浏览器预览与正式 APP 保持同一套完整镜像列表，避免只显示少量节点。
+* **📏 镜像面板优化**：加高镜像列表区域并保留滚动，测速排行能展示更多节点。
 
 ### 🚀 v0.3.5
 * **✨ 在线更新系统**：管理器新增 GitHub Release 检查更新，支持自动抓取最新 `version.json` 并展示详细的中文更新日志。
