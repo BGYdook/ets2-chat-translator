@@ -26,7 +26,7 @@ ETS2 / ATS / TruckersMP 聊天翻译插件。DLL 以 **SCS Telemetry** 插件形
 
 ## ✨ 功能特点
 
-- 🎮 **沉浸式覆盖窗口**：无缝贴合游戏，支持自定义字体大小、透明度、快捷键显示/隐藏，并会记住上次窗口位置和大小。
+- 🎮 **沉浸式覆盖窗口**：无缝贴合游戏，支持自定义字体大小、背景透明度、快捷键显示/隐藏，并会记住上次窗口位置和大小。
 - ⚡ **高性能异步翻译**：多 Worker 并发处理、同文本请求合并、队列限制、内存缓存；悬浮窗隐藏时不再发起翻译请求，减少无效 API 消耗。
 - 🔄 **只读最新消息**：智能从文件末尾开始监听，拒绝历史日志刷屏。
 - 🔌 **热重载支持**：修改配置后立即生效，下一条聊天自动重启翻译引擎。
@@ -45,7 +45,7 @@ ETS2 / ATS / TruckersMP 聊天翻译插件。DLL 以 **SCS Telemetry** 插件形
 
 1. **下载并运行安装包**：
    ```bash
-   build\installer\ETS2-Chat-Translator-Manager-Setup-0.3.3.exe
+   build\installer\ETS2-Chat-Translator-Manager-Setup-0.3.4.exe
    ```
 2. **打开管理器**：启动 `ETS2 Chat Translator Manager`。
 3. **定位游戏目录**：选择 ETS2 或 ATS，并自动识别或手动选择对应安装目录。
@@ -232,7 +232,7 @@ build.bat --no-pause
 
 ```text
 build\ets2_chat_translator.dll                        # 核心 DLL
-build\installer\ETS2-Chat-Translator-Manager-Setup-0.3.3.exe # 安装包
+build\installer\ETS2-Chat-Translator-Manager-Setup-0.3.4.exe # 安装包
 build\ets2_chat_translator_app\ETS2 Chat Translator Manager.exe # 免安装管理器
 ```
 *注：安装包使用 NSIS 制作，DLL 会自动打包进管理器的 `resources` 目录。*
@@ -260,8 +260,21 @@ ATS 对应日志为：
 | `HTTP 401` | API Key 无效，或者 Key 不属于当前接口/区域 |
 | `HTTP 403` | 鉴权失败、服务未开通、或缺少必需的参数 |
 | `HTTP 429` | 请求过快或额度耗尽，请降低 `workers` 或等待恢复 |
+| `INVALID_TO_PARAM` | 百度翻译目标语言参数不兼容，请升级到 `0.3.4+` 或将目标语言设为 `zh` |
 | `cannot parse response`| 返回 JSON 格式与解析逻辑不匹配，请查看日志中的 payload 预览 |
 | `returned original...`| 翻译平台原样返回了源文本，插件已拒绝将其视为有效翻译 |
+
+---
+
+## 🧾 更新日志
+
+### v0.3.4
+
+- 修复悬浮窗透明度会连字体一起变淡的问题，现在透明度只影响背景。
+- 悬浮窗聊天列表仅保留翻译结果，不再显示英文/原文副行。
+- 搜索框移动到窗口左侧标题区域，更适合窄窗口。
+- 修复百度翻译 `INVALID_TO_PARAM`，统一 `zh-CN`、`zh-cn`、`zh_Hans` 等目标语言代码。
+- 优化 MyMemory 兜底源语言判断，减少德语被误判为土耳其语导致半原文返回。
 
 ---
 

@@ -658,13 +658,25 @@ std::string FormPair(const char* key, const std::wstring& value)
 
 std::wstring TargetForSimpleApi(const std::wstring& target)
 {
-    if (target == L"zh-CN" || target == L"zh-Hans") return L"zh";
-    return target.empty() ? L"zh" : target;
+    std::wstring value = LowerAscii(target.empty() ? L"zh-CN" : target);
+    std::replace(value.begin(), value.end(), L'_', L'-');
+    if (value == L"zh-cn" || value == L"zh-hans" || value == L"zh-chs") return L"zh";
+    if (value == L"zh-tw" || value == L"zh-hant" || value == L"cht") return L"zh-TW";
+    return value;
 }
 
 bool ContainsAny(const std::wstring& text, const std::wstring& chars)
 {
     return text.find_first_of(chars) != std::wstring::npos;
+}
+
+int CountAny(const std::wstring& text, const std::wstring& chars)
+{
+    int count = 0;
+    for (wchar_t ch : text) {
+        if (chars.find(ch) != std::wstring::npos) ++count;
+    }
+    return count;
 }
 
 bool HasWordHint(const std::wstring& lower, std::initializer_list<const wchar_t*> words)
@@ -697,7 +709,15 @@ std::wstring GuessSourceLanguage(const std::wstring& input)
     }
     if (greek > 0 && greek >= latin) return L"el";
 
-    if (ContainsAny(lower, L"ığüşöçİĞÜŞÖÇ")) return L"tr";
+    int turkishScore = CountAny(lower, L"ığşçİĞŞÇ") + CountAny(lower, L"üö") / 2;
+    int germanScore = CountAny(lower, L"äöüß");
+    if (HasWordHint(lower, { L"die", L"der", L"das", L"für", L"mit", L"ohne", L"statt", L"heute", L"bei", L"uns", L"dich" })) {
+        germanScore += 3;
+    }
+    if (HasWordHint(lower, { L"ben", L"sen", L"kanka", L"kardeşim", L"tamam", L"abi", L"gel", L"git", L"yavaş", L"için" })) {
+        turkishScore += 3;
+    }
+    if (germanScore > 0 || turkishScore > 0) return germanScore >= turkishScore ? L"de" : L"tr";
     if (ContainsAny(lower, L"ąęłńóśźż")) return L"pl";
     if (ContainsAny(lower, L"ěščřžýáíéďťňů")) return L"cs";
     if (ContainsAny(lower, L"ăâîșţț")) return L"ro";
@@ -705,8 +725,8 @@ std::wstring GuessSourceLanguage(const std::wstring& input)
     if (ContainsAny(lower, L"ãõ")) return L"pt";
     if (ContainsAny(lower, L"ß")) return L"de";
 
-    if (HasWordHint(lower, { L"ben", L"sen", L"kanka", L"kardeşim", L"tamam", L"abi", L"gel", L"git", L"yavaş" })) return L"tr";
     if (HasWordHint(lower, { L"ich", L"nicht", L"und", L"der", L"die", L"das", L"bitte", L"danke" })) return L"de";
+    if (HasWordHint(lower, { L"ben", L"sen", L"kanka", L"kardeşim", L"tamam", L"abi", L"gel", L"git", L"yavaş" })) return L"tr";
     if (HasWordHint(lower, { L"bonjour", L"merci", L"avec", L"pour", L"pas", L"vous", L"oui" })) return L"fr";
     if (HasWordHint(lower, { L"hola", L"gracias", L"pero", L"porque", L"para", L"amigo" })) return L"es";
     if (HasWordHint(lower, { L"ciao", L"grazie", L"perché", L"sono", L"andare" })) return L"it";
@@ -724,9 +744,11 @@ std::wstring SourceOrGuess(const std::wstring& configured, const std::wstring& i
 
 std::wstring TargetForDeepL(const std::wstring& target)
 {
-    if (target == L"zh-CN" || target == L"zh" || target == L"zh-Hans") return L"ZH-HANS";
-    if (target == L"zh-TW" || target == L"zh-Hant") return L"ZH-HANT";
-    std::wstring out = target.empty() ? L"ZH-HANS" : target;
+    std::wstring value = LowerAscii(target.empty() ? L"zh-CN" : target);
+    std::replace(value.begin(), value.end(), L'_', L'-');
+    if (value == L"zh" || value == L"zh-cn" || value == L"zh-hans" || value == L"zh-chs") return L"ZH-HANS";
+    if (value == L"zh-tw" || value == L"zh-hant" || value == L"cht") return L"ZH-HANT";
+    std::wstring out = value;
     std::transform(out.begin(), out.end(), out.begin(), towupper);
     return out;
 }
@@ -952,37 +974,49 @@ std::wstring YoudaoInputForSign(const std::wstring& input)
 
 std::wstring SourceForBaidu(const std::wstring& source)
 {
-    return source.empty() ? L"auto" : source;
+    std::wstring value = LowerAscii(source.empty() ? L"auto" : source);
+    std::replace(value.begin(), value.end(), L'_', L'-');
+    if (value == L"zh-cn" || value == L"zh-hans" || value == L"zh-chs") return L"zh";
+    if (value == L"zh-tw" || value == L"zh-hant" || value == L"cht") return L"cht";
+    return value;
 }
 
 std::wstring TargetForBaidu(const std::wstring& target)
 {
-    if (target == L"zh-CN" || target == L"zh-Hans") return L"zh";
-    if (target == L"zh-TW" || target == L"zh-Hant") return L"cht";
-    if (target == L"ja") return L"jp";
-    return target.empty() ? L"zh" : target;
+    std::wstring value = LowerAscii(target.empty() ? L"zh-CN" : target);
+    std::replace(value.begin(), value.end(), L'_', L'-');
+    if (value == L"zh" || value == L"zh-cn" || value == L"zh-hans" || value == L"zh-chs") return L"zh";
+    if (value == L"zh-tw" || value == L"zh-hant" || value == L"cht") return L"cht";
+    if (value == L"ja") return L"jp";
+    return value;
 }
 
 std::wstring TargetForYoudao(const std::wstring& target)
 {
-    if (target == L"zh-CN" || target == L"zh" || target == L"zh-Hans") return L"zh-CHS";
-    if (target == L"zh-TW" || target == L"zh-Hant") return L"zh-CHT";
-    return target.empty() ? L"zh-CHS" : target;
+    std::wstring value = LowerAscii(target.empty() ? L"zh-CN" : target);
+    std::replace(value.begin(), value.end(), L'_', L'-');
+    if (value == L"zh" || value == L"zh-cn" || value == L"zh-hans" || value == L"zh-chs") return L"zh-CHS";
+    if (value == L"zh-tw" || value == L"zh-hant" || value == L"cht") return L"zh-CHT";
+    return value;
 }
 
 std::wstring TargetForTencent(const std::wstring& target)
 {
-    if (target == L"zh-CN" || target == L"zh-Hans") return L"zh";
-    if (target == L"zh-TW" || target == L"zh-Hant") return L"zh-TW";
-    return target.empty() ? L"zh" : target;
+    std::wstring value = LowerAscii(target.empty() ? L"zh-CN" : target);
+    std::replace(value.begin(), value.end(), L'_', L'-');
+    if (value == L"zh" || value == L"zh-cn" || value == L"zh-hans" || value == L"zh-chs") return L"zh";
+    if (value == L"zh-tw" || value == L"zh-hant" || value == L"cht") return L"zh-TW";
+    return value;
 }
 
 std::wstring SourceForTencent(const std::wstring& source)
 {
-    if (source.empty() || source == L"auto") return L"auto";
-    if (source == L"zh-CN" || source == L"zh-Hans") return L"zh";
-    if (source == L"zh-TW" || source == L"zh-Hant") return L"zh-TW";
-    return source;
+    std::wstring value = LowerAscii(source.empty() ? L"auto" : source);
+    std::replace(value.begin(), value.end(), L'_', L'-');
+    if (value == L"auto") return L"auto";
+    if (value == L"zh-cn" || value == L"zh-hans" || value == L"zh-chs") return L"zh";
+    if (value == L"zh-tw" || value == L"zh-hant" || value == L"cht") return L"zh-TW";
+    return value;
 }
 
 std::string DateUtcForTencent()
@@ -996,33 +1030,39 @@ std::string DateUtcForTencent()
 
 std::wstring TargetForAliyun(const std::wstring& target)
 {
-    if (target == L"zh-CN" || target == L"zh-Hans") return L"zh";
-    if (target == L"zh-TW" || target == L"zh-Hant") return L"cht";
-    if (target == L"ja") return L"ja";
-    return target.empty() ? L"zh" : target;
+    std::wstring value = LowerAscii(target.empty() ? L"zh-CN" : target);
+    std::replace(value.begin(), value.end(), L'_', L'-');
+    if (value == L"zh" || value == L"zh-cn" || value == L"zh-hans" || value == L"zh-chs") return L"zh";
+    if (value == L"zh-tw" || value == L"zh-hant" || value == L"cht") return L"cht";
+    return value;
 }
 
 std::wstring SourceForAliyun(const std::wstring& source)
 {
-    if (source.empty()) return L"auto";
-    if (source == L"zh-CN" || source == L"zh-Hans") return L"zh";
-    if (source == L"zh-TW" || source == L"zh-Hant") return L"cht";
-    return source;
+    std::wstring value = LowerAscii(source.empty() ? L"auto" : source);
+    std::replace(value.begin(), value.end(), L'_', L'-');
+    if (value == L"zh-cn" || value == L"zh-hans" || value == L"zh-chs") return L"zh";
+    if (value == L"zh-tw" || value == L"zh-hant" || value == L"cht") return L"cht";
+    return value;
 }
 
 std::wstring TargetForVolcengine(const std::wstring& target)
 {
-    if (target == L"zh-CN" || target == L"zh-Hans") return L"zh";
-    if (target == L"zh-TW" || target == L"zh-Hant") return L"zh-Hant";
-    return target.empty() ? L"zh" : target;
+    std::wstring value = LowerAscii(target.empty() ? L"zh-CN" : target);
+    std::replace(value.begin(), value.end(), L'_', L'-');
+    if (value == L"zh" || value == L"zh-cn" || value == L"zh-hans" || value == L"zh-chs") return L"zh";
+    if (value == L"zh-tw" || value == L"zh-hant" || value == L"cht") return L"zh-Hant";
+    return value;
 }
 
 std::wstring SourceForVolcengine(const std::wstring& source)
 {
-    if (source.empty() || source == L"auto") return L"";
-    if (source == L"zh-CN" || source == L"zh-Hans") return L"zh";
-    if (source == L"zh-TW" || source == L"zh-Hant") return L"zh-Hant";
-    return source;
+    std::wstring value = LowerAscii(source.empty() ? L"auto" : source);
+    std::replace(value.begin(), value.end(), L'_', L'-');
+    if (value == L"auto") return L"";
+    if (value == L"zh-cn" || value == L"zh-hans" || value == L"zh-chs") return L"zh";
+    if (value == L"zh-tw" || value == L"zh-hant" || value == L"cht") return L"zh-Hant";
+    return value;
 }
 
 std::wstring AliyunCanonicalQuery(std::vector<std::pair<std::wstring, std::wstring>> params)

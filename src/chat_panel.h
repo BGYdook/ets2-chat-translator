@@ -31,6 +31,7 @@ private:
     static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
 
     void Paint(HDC dc, RECT bounds);
+    void RenderLayered();
     void LayoutSearchBox(RECT bounds);
     void UpdateSearchText();
     bool EntryMatches(const ChatEntry& entry) const;
@@ -65,6 +66,7 @@ private:
     int rowH_ = 28;
     int subRowH_ = 24;
     int fontSize_ = 18;
+    int overlayOpacity_ = 98;
     int contentWidth_ = 420;
     int scroll_ = 0;
     DWORD uiThreadId_ = 0;

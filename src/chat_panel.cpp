@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <commctrl.h>
 #include <cwctype>
+#include <cstdint>
 #include <fstream>
 #include <sstream>
 #include <windowsx.h>
@@ -30,7 +31,7 @@ const COLORREF cBlue = RGB(59, 130, 246);
 const COLORREF cCyan = RGB(34, 211, 238);
 constexpr int kTimeColumnW = 68;
 
-BYTE OverlayAlpha(int opacity)
+BYTE BackgroundAlpha(int opacity)
 {
     int clamped = (std::max)(35, (std::min)(100, opacity));
     return (BYTE)((clamped * 255 + 50) / 100);
@@ -134,6 +135,43 @@ void RoundFill(HDC dc, RECT r, int radius, COLORREF color)
     SelectObject(dc, oldBrush);
     DeleteObject(pen);
     DeleteObject(brush);
+}
+
+void PrepareLayeredBitmap(HBITMAP bmp, int width, int height, BYTE backgroundAlpha)
+{
+    BITMAP bitmap{};
+    if (!GetObjectW(bmp, sizeof(bitmap), &bitmap) || !bitmap.bmBits) return;
+    const int stride = bitmap.bmWidthBytes;
+    auto* bits = static_cast<std::uint8_t*>(bitmap.bmBits);
+    for (int y = 0; y < height; ++y) {
+        auto* row = reinterpret_cast<std::uint32_t*>(bits + y * stride);
+        for (int x = 0; x < width; ++x) {
+            std::uint32_t pixel = row[x];
+            BYTE b = (BYTE)(pixel & 0xFF);
+            BYTE g = (BYTE)((pixel >> 8) & 0xFF);
+            BYTE r = (BYTE)((pixel >> 16) & 0xFF);
+            BYTE maxChannel = (std::max)(r, (std::max)(g, b));
+            BYTE a = maxChannel >= 95 ? 255 : backgroundAlpha;
+            if (a != 255) {
+                r = (BYTE)((r * a + 127) / 255);
+                g = (BYTE)((g * a + 127) / 255);
+                b = (BYTE)((b * a + 127) / 255);
+            }
+            row[x] = ((std::uint32_t)a << 24) | ((std::uint32_t)r << 16) | ((std::uint32_t)g << 8) | b;
+        }
+    }
+}
+
+HBITMAP CreateLayerBitmap(HDC dc, int width, int height, void** bits)
+{
+    BITMAPINFO info{};
+    info.bmiHeader.biSize = sizeof(info.bmiHeader);
+    info.bmiHeader.biWidth = width;
+    info.bmiHeader.biHeight = -height;
+    info.bmiHeader.biPlanes = 1;
+    info.bmiHeader.biBitCount = 32;
+    info.bmiHeader.biCompression = BI_RGB;
+    return CreateDIBSection(dc, &info, DIB_RGB_COLORS, bits, nullptr, 0);
 }
 
 void StrokeRound(HDC dc, RECT r, int radius, COLORREF color)
@@ -326,11 +364,11 @@ bool ChatPanel::Open(HINSTANCE instance, const RuntimeConfig& runtime, const std
         startRect.left, startRect.top, w, h, nullptr, nullptr, instance_, this);
     if (!hwnd_) return false;
 
-    SetLayeredWindowAttributes(hwnd_, 0, OverlayAlpha(runtime.overlayOpacity), LWA_ALPHA);
+    overlayOpacity_ = (std::max)(35, (std::min)(100, runtime.overlayOpacity));
     SetOverlayHotkey(runtime.overlayHotkey);
 
     ShowWindow(hwnd_, SW_SHOW);
-    UpdateWindow(hwnd_);
+    RenderLayered();
     return true;
 }
 
@@ -360,6 +398,7 @@ void ChatPanel::ApplyRuntime(const RuntimeConfig& runtime)
     titleFont_ = nextTitleFont;
 
     fontSize_ = nextFontSize;
+    overlayOpacity_ = (std::max)(35, (std::min)(100, runtime.overlayOpacity));
     rowH_ = (std::max)(18, fontSize_ + 7);
     subRowH_ = (std::max)(16, fontSize_ + 5);
     topBand_ = (std::max)(44, fontSize_ + 31);
@@ -368,7 +407,6 @@ void ChatPanel::ApplyRuntime(const RuntimeConfig& runtime)
     SetOverlayHotkey(runtime.overlayHotkey);
 
     if (hwnd_) {
-        SetLayeredWindowAttributes(hwnd_, 0, OverlayAlpha(runtime.overlayOpacity), LWA_ALPHA);
         if (searchBox_) {
             SendMessageW(searchBox_, WM_SETFONT, (WPARAM)smallFont_, TRUE);
             RECT rc{};
@@ -376,7 +414,7 @@ void ChatPanel::ApplyRuntime(const RuntimeConfig& runtime)
             LayoutSearchBox(rc);
         }
         ScrollToEnd();
-        InvalidateRect(hwnd_, nullptr, FALSE);
+        RenderLayered();
     }
 }
 
@@ -469,7 +507,7 @@ void ChatPanel::Status(const std::wstring& text)
         std::lock_guard<std::mutex> guard(lock_);
         status_ = text;
     }
-    if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
+    if (hwnd_) RenderLayered();
 }
 
 void ChatPanel::ToggleVisible()
@@ -483,7 +521,7 @@ void ChatPanel::ToggleVisible()
     ShowWindow(hwnd_, SW_SHOWNA);
     SetWindowPos(hwnd_, HWND_TOPMOST, 0, 0, 0, 0,
         SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
-    InvalidateRect(hwnd_, nullptr, FALSE);
+    RenderLayered();
 }
 
 void ChatPanel::SaveWindowState() const
@@ -536,18 +574,9 @@ LRESULT CALLBACK ChatPanel::WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
 
     case WM_PAINT: {
         PAINTSTRUCT ps{};
-        HDC dc = BeginPaint(hwnd, &ps);
-        RECT rc{};
-        GetClientRect(hwnd, &rc);
-        HDC mem = CreateCompatibleDC(dc);
-        HBITMAP bmp = CreateCompatibleBitmap(dc, rc.right, rc.bottom);
-        HBITMAP old = (HBITMAP)SelectObject(mem, bmp);
-        self->Paint(mem, rc);
-        BitBlt(dc, 0, 0, rc.right, rc.bottom, mem, 0, 0, SRCCOPY);
-        SelectObject(mem, old);
-        DeleteObject(bmp);
-        DeleteDC(mem);
+        BeginPaint(hwnd, &ps);
         EndPaint(hwnd, &ps);
+        self->RenderLayered();
         return 0;
     }
     case WM_NCHITTEST: {
@@ -574,6 +603,7 @@ LRESULT CALLBACK ChatPanel::WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
         SetWindowRgn(hwnd, rgn, TRUE);
         RECT rc{ 0, 0, cx, cy };
         self->LayoutSearchBox(rc);
+        self->RenderLayered();
         return 0;
     }
     case WM_EXITSIZEMOVE:
@@ -583,7 +613,7 @@ LRESULT CALLBACK ChatPanel::WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
         if ((int)LOWORD(wp) == self->searchBoxId_ && HIWORD(wp) == EN_CHANGE) {
             self->UpdateSearchText();
             self->ScrollToEnd();
-            InvalidateRect(hwnd, nullptr, FALSE);
+            self->RenderLayered();
             return 0;
         }
         break;
@@ -662,15 +692,55 @@ void ChatPanel::DrainPending()
         }
         if (entries_.size() > 700) entries_.erase(entries_.begin(), entries_.begin() + 150);
     }
-    InvalidateRect(hwnd_, nullptr, FALSE);
+    RenderLayered();
     if (follow_) PostMessageW(hwnd_, WM_APP + 1, 0, 0);
+}
+
+void ChatPanel::RenderLayered()
+{
+    if (!hwnd_) return;
+    RECT rc{};
+    if (!GetClientRect(hwnd_, &rc)) return;
+    int width = rc.right - rc.left;
+    int height = rc.bottom - rc.top;
+    if (width <= 0 || height <= 0) return;
+
+    HDC screen = GetDC(nullptr);
+    HDC mem = CreateCompatibleDC(screen);
+    void* bits = nullptr;
+    HBITMAP bmp = CreateLayerBitmap(screen, width, height, &bits);
+    if (!bmp || !bits) {
+        if (bmp) DeleteObject(bmp);
+        DeleteDC(mem);
+        ReleaseDC(nullptr, screen);
+        return;
+    }
+
+    HBITMAP old = (HBITMAP)SelectObject(mem, bmp);
+    Paint(mem, RECT{ 0, 0, width, height });
+    PrepareLayeredBitmap(bmp, width, height, BackgroundAlpha(overlayOpacity_));
+
+    POINT src{ 0, 0 };
+    POINT pos{};
+    RECT wr{};
+    GetWindowRect(hwnd_, &wr);
+    pos.x = wr.left;
+    pos.y = wr.top;
+    SIZE size{ width, height };
+    BLENDFUNCTION blend{ AC_SRC_OVER, 0, 255, AC_SRC_ALPHA };
+    UpdateLayeredWindow(hwnd_, screen, &pos, &size, mem, &src, 0, &blend, ULW_ALPHA);
+
+    SelectObject(mem, old);
+    DeleteObject(bmp);
+    DeleteDC(mem);
+    ReleaseDC(nullptr, screen);
 }
 
 void ChatPanel::Paint(HDC dc, RECT bounds)
 {
     SetBkMode(dc, TRANSPARENT);
     UpdateContentWidth(bounds.right);
-    Fill(dc, bounds, cBack);
+    Fill(dc, bounds, RGB(0, 0, 0));
 
     RECT outer{ 0, 0, bounds.right, bounds.bottom };
     RoundFill(dc, outer, 18, cPanel);
@@ -679,8 +749,8 @@ void ChatPanel::Paint(HDC dc, RECT bounds)
     RECT accent{ 16, 12, 20, topBand_ - 10 };
     RoundFill(dc, accent, 4, cBlue);
 
-    int titleRight = (searchBox_ && IsWindowVisible(searchBox_)) ? searchBoxRect_.left - 12 : bounds.right - 120;
-    RECT title{ 30, 0, (std::max)(150, titleRight), topBand_ };
+    int titleRight = (searchBox_ && IsWindowVisible(searchBox_)) ? searchBoxRect_.left - 10 : bounds.right - 120;
+    RECT title{ 30, 0, (std::max)(128, titleRight), topBand_ };
     DrawTextLine(dc, titleFont_, cText, L"TruckersMP Chat", title, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
     if (searchBox_ && IsWindowVisible(searchBox_)) {
@@ -754,18 +824,10 @@ void ChatPanel::Paint(HDC dc, RECT bounds)
                         }
                     }
 
-                    const std::wstring& primary = e.translated.empty() ? e.body : e.translated;
+                    const std::wstring primary = e.translated.empty() ? L"翻译中..." : e.translated;
                     int primaryH = WrappedTextHeight(dc, font_, primary, contentRight - contentX, rowH_, 4);
                     RECT primaryRc{ contentX, lineTop, contentRight, lineTop + primaryH };
-                    DrawWrappedText(dc, font_, e.translated.empty() ? cText : cTrans, primary, primaryRc, 4, rowH_);
-
-                    int bottom = primaryRc.bottom;
-                    if (!e.translated.empty()) {
-                        int originalTop = bottom + 3;
-                        int originalH = WrappedTextHeight(dc, smallFont_, e.body, contentRight - baseContentX, subRowH_, 3);
-                        RECT originalRc{ baseContentX, originalTop, contentRight, originalTop + originalH };
-                        DrawWrappedText(dc, smallFont_, cDim, e.body, originalRc, 3, subRowH_);
-                    }
+                    DrawWrappedText(dc, font_, e.translated.empty() ? cDim : cTrans, primary, primaryRc, 4, rowH_);
                 }
             }
             y += h;
@@ -804,13 +866,13 @@ void ChatPanel::LayoutSearchBox(RECT bounds)
     if (!searchBox_) return;
 
     int clientWidth = (int)bounds.right;
-    int width = (std::min)(190, (std::max)(132, clientWidth / 3));
-    int right = clientWidth - 128;
-    int left = right - width;
+    int width = (std::min)(170, (std::max)(118, clientWidth / 4));
+    int left = 206;
+    int right = left + width;
     int top = 13;
     int bottom = (std::max)(top + 24, topBand_ - 12);
 
-    if (clientWidth < 460 || left < 190 || bottom <= top + 8) {
+    if (clientWidth < 520 || right > clientWidth - 128 || bottom <= top + 8) {
         ShowWindow(searchBox_, SW_HIDE);
         return;
     }
@@ -860,11 +922,8 @@ int ChatPanel::EntryHeight(HDC dc, const ChatEntry& entry) const
         int nameWidth = TextWidth(dc, smallFont_, entry.author + L":");
         if (nameWidth + 6 > textWidth - 120) h += subRowH_ - 4;
     }
-    const std::wstring& primary = entry.translated.empty() ? entry.body : entry.translated;
+    const std::wstring primary = entry.translated.empty() ? L"翻译中..." : entry.translated;
     h += WrappedTextHeight(dc, font_, primary, textWidth, rowH_, 4);
-    if (!entry.translated.empty()) {
-        h += 3 + WrappedTextHeight(dc, smallFont_, entry.body, textWidth, subRowH_, 3);
-    }
     h += 8;
     return (std::max)(rowH_ + 14, h);
 }
@@ -905,7 +964,7 @@ void ChatPanel::ScrollToEnd()
     ReleaseDC(hwnd_, dc);
     follow_ = true;
     ResizeScroll();
-    InvalidateRect(hwnd_, nullptr, FALSE);
+    RenderLayered();
 }
 
 void ChatPanel::OnWheel(int delta)
@@ -926,7 +985,7 @@ void ChatPanel::OnWheel(int delta)
     }
     ReleaseDC(hwnd_, dc);
     ResizeScroll();
-    InvalidateRect(hwnd_, nullptr, FALSE);
+    RenderLayered();
 }
 
 void ChatPanel::OnClick(int x, int y)

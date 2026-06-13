@@ -295,33 +295,47 @@ function compactIsoUtc() {
 }
 
 function targetSimple(target) {
-  const value = String(target || 'zh-CN');
-  if (value === 'zh-CN' || value === 'zh-Hans') return 'zh';
+  const value = String(target || 'zh-CN').trim().toLowerCase().replace(/_/g, '-');
+  if (['zh', 'zh-cn', 'zh-hans', 'zh-chs'].includes(value)) return 'zh';
+  if (['zh-tw', 'zh-hant', 'cht'].includes(value)) return 'zh-TW';
   return value;
 }
 
 function targetMicrosoft(target) {
-  const value = String(target || 'zh-CN');
-  if (value === 'zh' || value === 'zh-CN') return 'zh-Hans';
+  const value = String(target || 'zh-CN').trim().toLowerCase().replace(/_/g, '-');
+  if (['zh', 'zh-cn', 'zh-hans', 'zh-chs'].includes(value)) return 'zh-Hans';
+  if (['zh-tw', 'zh-hant', 'cht'].includes(value)) return 'zh-Hant';
   return value;
 }
 
 function targetBaidu(target) {
-  const value = String(target || 'zh-CN');
-  if (value === 'zh-CN' || value === 'zh-Hans') return 'zh';
+  const value = String(target || 'zh-CN').trim().toLowerCase().replace(/_/g, '-');
+  if (['zh', 'zh-cn', 'zh-hans', 'zh-chs'].includes(value)) return 'zh';
+  if (['zh-tw', 'zh-hant', 'cht'].includes(value)) return 'cht';
+  if (value === 'ja') return 'jp';
   return value;
 }
 
+function sourceBaidu(source) {
+  const value = String(source || 'auto').trim().toLowerCase().replace(/_/g, '-');
+  if (['zh-cn', 'zh-hans', 'zh-chs'].includes(value)) return 'zh';
+  if (['zh-tw', 'zh-hant', 'cht'].includes(value)) return 'cht';
+  if (value === 'ja') return 'jp';
+  return value || 'auto';
+}
+
 function targetYoudao(target) {
-  const value = String(target || 'zh-CN');
-  if (value === 'zh-CN' || value === 'zh' || value === 'zh-Hans') return 'zh-CHS';
+  const value = String(target || 'zh-CN').trim().toLowerCase().replace(/_/g, '-');
+  if (['zh', 'zh-cn', 'zh-hans', 'zh-chs'].includes(value)) return 'zh-CHS';
+  if (['zh-tw', 'zh-hant', 'cht'].includes(value)) return 'zh-CHT';
   return value;
 }
 
 function targetDeepL(target) {
-  const value = String(target || 'zh-CN').toUpperCase();
-  if (value === 'ZH-CN' || value === 'ZH-HANS' || value === 'ZH') return 'ZH';
-  return value;
+  const value = String(target || 'zh-CN').trim().toLowerCase().replace(/_/g, '-');
+  if (['zh', 'zh-cn', 'zh-hans', 'zh-chs'].includes(value)) return 'ZH';
+  if (['zh-tw', 'zh-hant', 'cht'].includes(value)) return 'ZH-HANT';
+  return value.toUpperCase();
 }
 
 function sourceOrAuto(provider) {
@@ -489,7 +503,7 @@ async function testBaidu(provider, runtime) {
   const salt = String(Date.now());
   const params = new URLSearchParams({
     q: runtime.sampleText,
-    from: sourceOrAuto(provider),
+    from: sourceBaidu(sourceOrAuto(provider)),
     to: targetBaidu(runtime.target),
     appid: provider.api_key,
     salt,
