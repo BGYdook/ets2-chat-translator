@@ -23,7 +23,7 @@
         <div id="statusPill" class="pill">准备就绪</div>
       </header>
 
-      <section class="panel glass-panel">
+      <section class="panel glass-panel install-panel">
         <div class="section-title">
           <div class="title-with-icon">
             <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>
@@ -52,8 +52,9 @@
         <div id="pluginDir" class="hint"></div>
       </section>
 
-      <section class="grid">
-        <div class="panel glass-panel form-section">
+      <section class="workspace-grid">
+        <div class="config-stack">
+          <div class="panel glass-panel form-section">
           <div class="section-title">
             <div class="title-with-icon">
               <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
@@ -62,7 +63,7 @@
             <span class="sub-text">Provider 按配置顺序回退</span>
           </div>
 
-          <div class="form-grid">
+          <div class="form-grid basic-grid">
             <div class="form-group">
               <label>主翻译平台</label>
               <div class="select-wrapper">
@@ -107,7 +108,11 @@
               <label>超时 (ms)</label>
               <input id="timeoutMs" type="number" min="1500" max="6000" value="5000" />
             </div>
+          </div>
+          </div>
 
+          <div class="panel glass-panel tuning-panel">
+          <div class="form-grid tuning-grid">
             <div class="form-group">
               <label>悬浮窗字体大小</label>
               <div class="font-size-control">
@@ -125,6 +130,10 @@
                 <button type="button" class="preset-btn" data-size="22">大 22</button>
                 <button type="button" class="preset-btn" data-size="26">特大 26</button>
               </div>
+              <div class="font-preview" id="fontPreview">
+                <div>中文：TruckersMP 翻译</div>
+                <div>English: truckersmp chat preview</div>
+              </div>
             </div>
 
             <div class="form-group">
@@ -132,8 +141,9 @@
               <input id="overlayHotkey" value="Ctrl+Shift+T" spellcheck="false" />
             </div>
           </div>
+          </div>
 
-          <div id="llmFields" class="llm-fields glass-inset">
+          <div id="llmFields" class="panel glass-panel llm-fields provider-panel">
             <h3 class="inset-title">Provider 配置</h3>
             <div class="form-group">
               <label>Provider 名称</label>
@@ -168,6 +178,7 @@
             </div>
           </div>
 
+          <div class="panel glass-panel action-panel">
           <div class="actions split">
             <button id="loadConfigBtn" class="secondary-btn">读取已安装</button>
             <button id="previewBtn" class="secondary-btn">刷新预览</button>
@@ -175,6 +186,7 @@
             <button id="saveConfigBtn" class="primary-btn glow-btn">保存配置</button>
           </div>
           <div id="testResult" class="test-result" aria-live="polite"></div>
+          </div>
         </div>
 
         <div class="panel glass-panel preview-panel">

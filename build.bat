@@ -82,6 +82,7 @@ if not "!ERRORLEVEL!"=="0" (
         if not defined NO_PAUSE pause
         exit /b 1
     )
+    del /q "dist\ETS2-Chat-Translator-Manager-Setup-*.exe" "dist\ETS2-Chat-Translator-Manager-Setup-*.exe.blockmap" >nul 2>&1
     call npm run dist
     if not "!ERRORLEVEL!"=="0" (
         popd

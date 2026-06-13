@@ -30,9 +30,18 @@ public:
                   const std::string& body, const std::vector<HeaderPair>& headers = {});
 
 private:
+    HINTERNET ConnectionFor(const std::wstring& host, INTERNET_PORT port);
     NetReply Send(const wchar_t* verb, const std::wstring& host, INTERNET_PORT port, const std::wstring& target,
                   bool tls, const std::string& body, const std::vector<HeaderPair>& headers);
 
+    struct Connection
+    {
+        std::wstring host;
+        INTERNET_PORT port = 0;
+        HINTERNET handle = nullptr;
+    };
+
     HINTERNET session_ = nullptr;
+    std::vector<Connection> connections_;
     int timeoutMs_ = 5000;
 };

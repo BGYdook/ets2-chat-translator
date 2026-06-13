@@ -19,6 +19,7 @@ const els = {
   fontSizeValue: document.querySelector('#fontSizeValue'),
   fontSizeMinus: document.querySelector('#fontSizeMinus'),
   fontSizePlus: document.querySelector('#fontSizePlus'),
+  fontPreview: document.querySelector('#fontPreview'),
   llmFields: document.querySelector('#llmFields'),
   providerLabel: document.querySelector('#providerLabel'),
   baseUrl: document.querySelector('#baseUrl'),
@@ -430,6 +431,9 @@ function setFontSize(size) {
   size = Math.max(12, Math.min(28, size));
   els.fontSize.value = size;
   els.fontSizeValue.textContent = size;
+  if (els.fontPreview) {
+    els.fontPreview.style.fontSize = `${size}px`;
+  }
   // 高亮对应预设按钮
   document.querySelectorAll('.preset-btn').forEach(btn => {
     btn.classList.toggle('active', Number(btn.dataset.size) === size);

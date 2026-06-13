@@ -58,8 +58,8 @@ let mainWindow;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1040,
-    height: 760,
+    width: 1320,
+    height: 860,
     minWidth: 880,
     minHeight: 640,
     title: 'ETS2 Chat Translator Manager',

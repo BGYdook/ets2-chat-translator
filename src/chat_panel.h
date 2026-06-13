@@ -31,6 +31,9 @@ private:
     static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
 
     void Paint(HDC dc, RECT bounds);
+    void LayoutSearchBox(RECT bounds);
+    void UpdateSearchText();
+    bool EntryMatches(const ChatEntry& entry) const;
     void UpdateContentWidth(int clientWidth);
     int EntryHeight(HDC dc, const ChatEntry& entry) const;
     void ScrollToEnd();
@@ -41,10 +44,12 @@ private:
     void OnClick(int x, int y);
 
     HWND hwnd_ = nullptr;
+    HWND searchBox_ = nullptr;
     HINSTANCE instance_ = nullptr;
     HFONT font_ = nullptr;
     HFONT smallFont_ = nullptr;
     HFONT titleFont_ = nullptr;
+    HBRUSH editBrush_ = nullptr;
 
     mutable std::mutex lock_;
     std::vector<ChatEntry> entries_;
@@ -52,6 +57,7 @@ private:
     std::queue<std::pair<unsigned int, std::wstring>> pendingTranslations_;
     unsigned int nextId_ = 1;
     std::wstring status_;
+    std::wstring searchText_;
 
     int topBand_ = 46;
     int statusBand_ = 32;
@@ -64,8 +70,10 @@ private:
     bool follow_ = true;
     bool closing_ = false;
     int hotkeyId_ = 0x4554;
+    int searchBoxId_ = 0x4555;
     bool hotkeyRegistered_ = false;
     std::wstring overlayHotkey_ = L"Ctrl+Shift+T";
+    RECT searchBoxRect_{};
 
     void DrainPending();
 };

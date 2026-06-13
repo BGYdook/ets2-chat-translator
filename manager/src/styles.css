@@ -75,11 +75,11 @@ body {
 }
 
 .shell {
-  width: min(1200px, calc(100vw - 40px));
-  margin: 40px auto;
+  width: min(1680px, calc(100vw - 48px));
+  margin: 18px auto;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 14px;
 }
 
 /* Glassmorphism Panels */
@@ -88,9 +88,9 @@ body {
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--panel-border);
-  border-radius: 16px;
+  border-radius: 12px;
   box-shadow: var(--glass-shadow);
-  padding: 24px;
+  padding: 22px;
   transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
 
@@ -104,14 +104,14 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 20px 32px;
+  padding: 14px 24px;
 }
 
 .header-content h1 {
-  font-size: 28px;
+  font-size: 25px;
   font-weight: 700;
   letter-spacing: -0.5px;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
 .accent {
@@ -122,7 +122,7 @@ body {
 
 .header-content p {
   color: var(--text-muted);
-  font-size: 15px;
+  font-size: 14px;
 }
 
 .pill {
@@ -161,8 +161,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 24px;
-  padding-bottom: 16px;
+  margin-bottom: 18px;
+  padding-bottom: 14px;
   border-bottom: 1px solid var(--panel-border);
 }
 
@@ -210,7 +210,54 @@ h2 {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin-bottom: 20px;
+  margin-bottom: 0;
+}
+
+.install-panel {
+  display: grid;
+  grid-template-columns: minmax(210px, 260px) minmax(420px, 1fr) auto;
+  grid-template-areas:
+    "install-title install-path install-actions"
+    "install-game install-hint install-actions";
+  gap: 10px 16px;
+  align-items: center;
+}
+
+.install-panel .section-title {
+  grid-area: install-title;
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: 0;
+  display: grid;
+  gap: 8px;
+  justify-content: start;
+  align-content: center;
+}
+
+.install-panel .game-switch {
+  grid-area: install-game;
+  margin-bottom: 0;
+  align-self: start;
+}
+
+.install-panel .path-row {
+  grid-area: install-path;
+}
+
+.install-panel .main-actions {
+  grid-area: install-actions;
+  margin-top: 0;
+  justify-content: flex-end;
+  white-space: nowrap;
+}
+
+.install-panel .hint {
+  grid-area: install-hint;
+  margin-top: 0;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .game-switch {
@@ -258,7 +305,16 @@ h2 {
 .form-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 20px;
+  gap: 16px;
+}
+
+.basic-grid {
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+}
+
+.tuning-grid {
+  grid-template-columns: 1fr;
+  align-items: start;
 }
 
 .form-group {
@@ -406,19 +462,29 @@ button {
 
 .actions {
   display: flex;
-  gap: 16px;
-  margin-top: 24px;
+  gap: 12px;
+  margin-top: 18px;
 }
 
 .actions.split {
-  justify-content: flex-end;
-  border-top: 1px solid var(--panel-border);
-  padding-top: 24px;
-  margin-top: 32px;
+  justify-content: stretch;
+  border-top: 0;
+  padding-top: 0;
+  margin-top: 0;
 }
 
 .actions.split .secondary-btn:first-child {
-  margin-right: auto;
+  margin-right: 0;
+}
+
+.action-panel .actions.split {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.action-panel button {
+  width: 100%;
+  white-space: nowrap;
 }
 
 .test-result {
@@ -482,17 +548,15 @@ button {
   word-break: break-word;
 }
 
-/* LLM Fields Inset */
-.glass-inset {
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 12px;
-  padding: 24px;
-  margin-top: 24px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
+.llm-fields {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(3, minmax(160px, 1fr));
   gap: 16px;
   position: relative;
+}
+
+.provider-panel {
+  padding-top: 28px;
 }
 
 .inset-title {
@@ -509,16 +573,51 @@ button {
   letter-spacing: 0.5px;
 }
 
-/* Layout Grid */
-.grid {
+.workspace-grid {
   display: grid;
-  grid-template-columns: 1fr 450px;
-  gap: 24px;
+  grid-template-columns: minmax(860px, 1.7fr) minmax(420px, 0.75fr);
+  gap: 14px;
+  align-items: stretch;
+}
+
+.config-stack {
+  display: grid;
+  grid-template-columns: minmax(540px, 1fr) minmax(340px, 0.68fr);
+  grid-template-areas:
+    "basic tuning"
+    "provider actions";
+  gap: 14px;
+  align-content: start;
+  align-items: stretch;
+}
+
+.form-section {
+  grid-area: basic;
+}
+
+.tuning-panel {
+  grid-area: tuning;
+}
+
+.provider-panel {
+  grid-area: provider;
+}
+
+.action-panel {
+  grid-area: actions;
+  min-height: 0;
+}
+
+.preview-panel {
+  min-height: 540px;
+  position: sticky;
+  top: 14px;
+  height: min(680px, calc(100vh - 210px));
 }
 
 /* Editor */
 .editor-container {
-  height: calc(100% - 65px);
+  height: calc(100% - 58px);
   position: relative;
   border-radius: 12px;
   overflow: hidden;
@@ -540,7 +639,7 @@ button {
 
 textarea {
   height: 100%;
-  min-height: 400px;
+  min-height: 430px;
   resize: none;
   padding: 20px;
   background: rgba(10, 15, 25, 0.7);
@@ -566,14 +665,51 @@ textarea:focus {
 }
 
 @media (max-width: 1000px) {
-  .grid {
+  .shell {
+    width: min(100% - 28px, 980px);
+    margin: 18px auto;
+  }
+  .install-panel,
+  .basic-grid,
+  .tuning-grid,
+  .llm-fields {
     grid-template-columns: 1fr;
+  }
+  .workspace-grid {
+    grid-template-columns: 1fr;
+  }
+  .preview-panel {
+    position: static;
+    height: auto;
+    min-height: 520px;
   }
   .input-group {
     flex-direction: column;
   }
   .actions {
     flex-wrap: wrap;
+  }
+}
+
+@media (min-width: 1001px) and (max-width: 1350px) {
+  .workspace-grid {
+    grid-template-columns: 1fr;
+  }
+  .preview-panel {
+    position: static;
+    height: 620px;
+    min-height: 620px;
+  }
+  .basic-grid,
+  .llm-fields {
+    grid-template-columns: repeat(2, minmax(180px, 1fr));
+  }
+  .install-panel {
+    grid-template-columns: minmax(160px, 220px) minmax(360px, 1fr);
+  }
+  .install-panel .main-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
   }
 }
 
@@ -661,4 +797,20 @@ textarea:focus {
   color: white;
   border-color: var(--accent);
   box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+}
+
+.font-preview {
+  min-height: 76px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--input-border);
+  background: rgba(10, 15, 25, 0.62);
+  color: var(--text-main);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.font-preview div + div {
+  margin-top: 4px;
+  color: var(--text-muted);
 }

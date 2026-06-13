@@ -571,6 +571,22 @@ std::wstring ReplyError(const NetReply& reply, const wchar_t* fallback)
     return fallback;
 }
 
+bool PermanentProviderError(const std::wstring& error)
+{
+    return error.find(L"HTTP 400") != std::wstring::npos
+        || error.find(L"HTTP 401") != std::wstring::npos
+        || error.find(L"HTTP 403") != std::wstring::npos
+        || error.find(L"HTTP 404") != std::wstring::npos
+        || error.find(L"bad base_url") != std::wstring::npos
+        || error.find(L"sign failed") != std::wstring::npos;
+}
+
+int MaxOutputTokensForChat(const std::wstring& input)
+{
+    int byLength = 64 + (int)(input.size() / 3);
+    return (std::max)(96, (std::min)(192, byLength));
+}
+
 std::wstring NowStamp()
 {
     SYSTEMTIME t{};
@@ -1106,19 +1122,15 @@ public:
 
         std::wstring target = runtime.targetLanguage.empty() ? L"zh-CN" : runtime.targetLanguage;
         std::wstring prompt = L"You translate TruckersMP/ETS2 multiplayer chat into " + target +
-            L". Output ONLY the translation, no quotes, no explanations, no original text. "
-            L"Always produce target-language output even for very short or unusual inputs. "
-            L"Source can be ANY language (English, Turkish, Russian, German, French, Polish, Spanish, etc.) — translate all of them. "
-            L"Translate slang and chat shorthand: sry/sorry=抱歉, pls/plz/please=请, ty/thx/thanks=谢谢, "
-            L"np=没事, gg=打得好, wp=打得好, brb=马上回, afk=暂离, lol/xd=哈哈, idk=我不知道, "
-            L"o/ or o//=挥手(打招呼), \\o/=欢呼, hi/hello/hey=你好, bye/cya=再见, gn=晚安, gm=早安, rec/recording=已录屏, wtf=什么鬼. "
-            L"Keep player names, game IDs (numbers), tags in [brackets], URLs and emoji unchanged. "
-            L"If input is purely punctuation/emoji with no meaning, output a brief Chinese description like 表情. "
-            L"Never echo the original text as the answer.";
+            L". Output only the translation, no quotes or explanations. "
+            L"Translate any source language and short slang. Common chat: sry/sorry=抱歉, pls/plz=请, ty/thx=谢谢, "
+            L"np=没事, gg/wp=打得好, brb=马上回, afk=暂离, lol/xd=哈哈, idk=我不知道, rec=已录屏, wtf=什么鬼. "
+            L"Keep names, IDs, [tags], URLs and emoji unchanged. Never echo the original.";
 
         std::string body = "{";
         body += "\"model\":\"" + text::EscapeJson(settings_.model) + "\",";
         body += "\"temperature\":0,";
+        body += "\"max_tokens\":" + std::to_string(MaxOutputTokensForChat(input)) + ",";
         body += "\"messages\":[";
         body += "{\"role\":\"system\",\"content\":\"" + text::EscapeJson(prompt) + "\"},";
         body += "{\"role\":\"user\",\"content\":\"" + text::EscapeJson(input) + "\"}";
@@ -1177,15 +1189,13 @@ public:
 
         std::wstring target = runtime.targetLanguage.empty() ? L"zh-CN" : runtime.targetLanguage;
         std::wstring prompt = L"You translate TruckersMP/ETS2 multiplayer chat into " + target +
-            L". Output ONLY the translation, no quotes, no explanations, no original text. "
-            L"Always produce target-language output even for very short, slang-heavy, or multilingual inputs. "
-            L"Translate common TruckersMP shorthand: rec/recording=已录屏, rec ban=已录屏，等封禁, wtf=什么鬼. "
-            L"Keep player names, game IDs, tags in [brackets], URLs and emoji unchanged. "
-            L"Never echo the original text as the answer.";
+            L". Output only the translation, no quotes or explanations. "
+            L"Translate short slang and multilingual chat. Common chat: rec=已录屏, rec ban=已录屏，等封禁, wtf=什么鬼, ty/thx=谢谢. "
+            L"Keep names, IDs, [tags], URLs and emoji unchanged. Never echo the original.";
 
         std::string body = "{";
         body += "\"model\":\"" + text::EscapeJson(settings_.model) + "\",";
-        body += "\"max_tokens\":512,";
+        body += "\"max_tokens\":" + std::to_string(MaxOutputTokensForChat(input)) + ",";
         body += "\"system\":\"" + text::EscapeJson(prompt) + "\",";
         body += "\"messages\":[{\"role\":\"user\",\"content\":\"" + text::EscapeJson(input) + "\"}]";
         body += "}";
@@ -1854,10 +1864,10 @@ void TranslateEngine::Submit(unsigned int id, const std::wstring& value)
 int ProviderIntervalMs(const std::wstring& kind)
 {
     std::wstring lower = LowerAscii(kind);
-    if (lower == L"mymemory") return 1100;
-    if (lower == L"andeer") return 650;
-    if (lower == L"libretranslate" || lower == L"libre_translate") return 450;
-    return 80;
+    if (lower == L"mymemory") return 450;
+    if (lower == L"andeer") return 350;
+    if (lower == L"libretranslate" || lower == L"libre_translate") return 300;
+    return 35;
 }
 
 bool RetryableProviderError(const std::wstring& error)
@@ -2061,6 +2071,10 @@ void TranslateEngine::NoteProviderResult(size_t index, bool success, const std::
     }
 
     ++h.failures;
+    if (PermanentProviderError(error)) {
+        h.coolUntil = std::chrono::steady_clock::now() + std::chrono::minutes(3);
+        return;
+    }
     if (RetryableProviderError(error) && h.failures >= 2) {
         int seconds = (std::min)(45, 8 + h.failures * 6);
         h.coolUntil = std::chrono::steady_clock::now() + std::chrono::seconds(seconds);

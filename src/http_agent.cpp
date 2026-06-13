@@ -11,7 +11,23 @@ HttpAgent::HttpAgent(int timeoutMs)
 
 HttpAgent::~HttpAgent()
 {
+    for (auto& conn : connections_) {
+        if (conn.handle) WinHttpCloseHandle(conn.handle);
+    }
+    connections_.clear();
     if (session_) WinHttpCloseHandle(session_);
+}
+
+HINTERNET HttpAgent::ConnectionFor(const std::wstring& host, INTERNET_PORT port)
+{
+    for (const auto& conn : connections_) {
+        if (conn.host == host && conn.port == port) return conn.handle;
+    }
+
+    HINTERNET handle = WinHttpConnect(session_, host.c_str(), port, 0);
+    if (!handle) return nullptr;
+    connections_.push_back({ host, port, handle });
+    return handle;
 }
 
 NetReply HttpAgent::Get(const std::wstring& host, INTERNET_PORT port, const std::wstring& target, bool tls,
@@ -36,7 +52,7 @@ NetReply HttpAgent::Send(const wchar_t* verb, const std::wstring& host, INTERNET
         return reply;
     }
 
-    HINTERNET conn = WinHttpConnect(session_, host.c_str(), port, 0);
+    HINTERNET conn = ConnectionFor(host, port);
     if (!conn) {
         reply.error = L"connect failed";
         return reply;
@@ -46,12 +62,12 @@ NetReply HttpAgent::Send(const wchar_t* verb, const std::wstring& host, INTERNET
         WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, tls ? WINHTTP_FLAG_SECURE : 0);
     if (!req) {
         reply.error = L"request creation failed";
-        WinHttpCloseHandle(conn);
         return reply;
     }
 
-    int connectTimeout = (std::min)(3000, timeoutMs_);
-    WinHttpSetTimeouts(req, 2000, connectTimeout, connectTimeout, timeoutMs_);
+    int connectTimeout = (std::min)(1800, timeoutMs_);
+    int sendTimeout = (std::min)(1800, timeoutMs_);
+    WinHttpSetTimeouts(req, 800, connectTimeout, sendTimeout, timeoutMs_);
 
     std::wstring rawHeaders;
     for (const auto& h : headers) rawHeaders += h.name + L": " + h.value + L"\r\n";
@@ -65,7 +81,6 @@ NetReply HttpAgent::Send(const wchar_t* verb, const std::wstring& host, INTERNET
     if (!ok || !WinHttpReceiveResponse(req, nullptr)) {
         reply.error = L"request failed";
         WinHttpCloseHandle(req);
-        WinHttpCloseHandle(conn);
         return reply;
     }
 
@@ -87,6 +102,5 @@ NetReply HttpAgent::Send(const wchar_t* verb, const std::wstring& host, INTERNET
     }
 
     WinHttpCloseHandle(req);
-    WinHttpCloseHandle(conn);
     return reply;
 }

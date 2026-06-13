@@ -45,7 +45,7 @@ ETS2 / ATS / TruckersMP 聊天翻译插件。DLL 以 **SCS Telemetry** 插件形
 
 1. **下载并运行安装包**：
    ```bash
-   build\installer\ETS2-Chat-Translator-Manager-Setup-0.1.0.exe
+   build\installer\ETS2-Chat-Translator-Manager-Setup-0.2.0.exe
    ```
 2. **打开管理器**：启动 `ETS2 Chat Translator Manager`。
 3. **定位游戏目录**：选择 ETS2 或 ATS，并自动识别或手动选择对应安装目录。
@@ -198,7 +198,7 @@ build.bat --no-pause
 
 ```text
 build\ets2_chat_translator.dll                        # 核心 DLL
-build\installer\ETS2-Chat-Translator-Manager-Setup-0.1.0.exe # 安装包
+build\installer\ETS2-Chat-Translator-Manager-Setup-0.2.0.exe # 安装包
 build\ets2_chat_translator_app\ETS2 Chat Translator Manager.exe # 免安装管理器
 ```
 *注：安装包使用 NSIS 制作，DLL 会自动打包进管理器的 `resources` 目录。*
