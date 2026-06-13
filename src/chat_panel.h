@@ -14,7 +14,7 @@ public:
     ChatPanel();
     ~ChatPanel();
 
-    bool Open(HINSTANCE instance, const RuntimeConfig& runtime);
+    bool Open(HINSTANCE instance, const RuntimeConfig& runtime, const std::wstring& windowStatePath = L"");
     void Close();
     void MessageLoop();
     void ApplyRuntime(const RuntimeConfig& runtime);
@@ -42,6 +42,7 @@ private:
     void ResizeScroll();
     void OnWheel(int delta);
     void OnClick(int x, int y);
+    void SaveWindowState() const;
 
     HWND hwnd_ = nullptr;
     HWND searchBox_ = nullptr;
@@ -73,6 +74,7 @@ private:
     int searchBoxId_ = 0x4555;
     bool hotkeyRegistered_ = false;
     std::wstring overlayHotkey_ = L"Ctrl+Shift+T";
+    std::wstring windowStatePath_;
     RECT searchBoxRect_{};
 
     void DrainPending();

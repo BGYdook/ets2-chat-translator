@@ -46,6 +46,7 @@ private:
     AppSettings settings_;
     std::wstring pluginFolder_;
     std::wstring configFile_;
+    std::wstring windowStateFile_;
     std::wstring logFolder_;
     FILETIME configWriteTime_{};
     std::mutex translatorLock_;

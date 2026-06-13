@@ -56,6 +56,7 @@ bool AppRuntime::Boot()
 {
     pluginFolder_ = paths::ModuleFolder(dll_);
     configFile_ = pluginFolder_ + L"\\ets2_chat_translator_config.json";
+    windowStateFile_ = pluginFolder_ + L"\\ets2_chat_translator_window.json";
     std::wstring lowerGame = gameId_ + L" " + gameName_;
     std::transform(lowerGame.begin(), lowerGame.end(), lowerGame.begin(), [](wchar_t ch) {
         return (wchar_t)towlower(ch);
@@ -69,7 +70,7 @@ bool AppRuntime::Boot()
     configWriteTime_ = ConfigWriteTime();
 
     panel_ = std::make_unique<ChatPanel>();
-    if (!panel_->Open(dll_, settings_.runtime)) {
+    if (!panel_->Open(dll_, settings_.runtime, windowStateFile_)) {
         Log("[ChatTranslator] failed to create panel");
         return false;
     }

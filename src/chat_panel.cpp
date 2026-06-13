@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <commctrl.h>
 #include <cwctype>
+#include <fstream>
+#include <sstream>
 #include <windowsx.h>
 
 #ifndef EM_SETCUEBANNER
@@ -32,6 +34,78 @@ BYTE OverlayAlpha(int opacity)
 {
     int clamped = (std::max)(35, (std::min)(100, opacity));
     return (BYTE)((clamped * 255 + 50) / 100);
+}
+
+int JsonInt(const std::string& json, const std::string& key, int fallback)
+{
+    std::string needle = "\"" + key + "\"";
+    size_t p = json.find(needle);
+    if (p == std::string::npos) return fallback;
+    p = json.find(':', p + needle.size());
+    if (p == std::string::npos) return fallback;
+    try { return std::stoi(json.substr(p + 1)); } catch (...) { return fallback; }
+}
+
+RECT WorkAreaForRect(const RECT& rect)
+{
+    RECT area{};
+    HMONITOR monitor = MonitorFromRect(&rect, MONITOR_DEFAULTTONEAREST);
+    MONITORINFO info{};
+    info.cbSize = sizeof(info);
+    if (monitor && GetMonitorInfoW(monitor, &info)) return info.rcWork;
+    SystemParametersInfoW(SPI_GETWORKAREA, 0, &area, 0);
+    return area;
+}
+
+RECT ClampWindowRect(RECT rect)
+{
+    constexpr int minW = 420;
+    constexpr int minH = 260;
+    int w = (std::max)(minW, (int)(rect.right - rect.left));
+    int h = (std::max)(minH, (int)(rect.bottom - rect.top));
+    RECT probe{ rect.left, rect.top, rect.left + w, rect.top + h };
+    RECT area = WorkAreaForRect(probe);
+    int areaW = (int)(area.right - area.left);
+    int areaH = (int)(area.bottom - area.top);
+    int maxW = (std::max)(minW, areaW);
+    int maxH = (std::max)(minH, areaH);
+    w = (std::min)(w, maxW);
+    h = (std::min)(h, maxH);
+    int x = rect.left;
+    int y = rect.top;
+    if (x + w > area.right) x = area.right - w;
+    if (y + h > area.bottom) y = area.bottom - h;
+    if (x < area.left) x = area.left;
+    if (y < area.top) y = area.top;
+    return RECT{ x, y, x + w, y + h };
+}
+
+RECT DefaultWindowRect()
+{
+    int w = 600;
+    int h = 540;
+    RECT area{};
+    SystemParametersInfoW(SPI_GETWORKAREA, 0, &area, 0);
+    int x = area.right - w - 24;
+    int y = area.top + 72;
+    return ClampWindowRect(RECT{ x, y, x + w, y + h });
+}
+
+RECT LoadWindowRect(const std::wstring& path)
+{
+    RECT fallback = DefaultWindowRect();
+    if (path.empty()) return fallback;
+    std::ifstream f(path, std::ios::binary);
+    if (!f) return fallback;
+    std::ostringstream buf;
+    buf << f.rdbuf();
+    std::string json = buf.str();
+    if (json.empty()) return fallback;
+    int x = JsonInt(json, "x", fallback.left);
+    int y = JsonInt(json, "y", fallback.top);
+    int w = JsonInt(json, "width", fallback.right - fallback.left);
+    int h = JsonInt(json, "height", fallback.bottom - fallback.top);
+    return ClampWindowRect(RECT{ x, y, x + w, y + h });
 }
 
 void Fill(HDC dc, RECT r, COLORREF color)
@@ -225,10 +299,11 @@ ChatPanel::~ChatPanel()
     Close();
 }
 
-bool ChatPanel::Open(HINSTANCE instance, const RuntimeConfig& runtime)
+bool ChatPanel::Open(HINSTANCE instance, const RuntimeConfig& runtime, const std::wstring& windowStatePath)
 {
     instance_ = instance;
     uiThreadId_ = GetCurrentThreadId();
+    windowStatePath_ = windowStatePath;
 
     WNDCLASSEXW wc{};
     wc.cbSize = sizeof(wc);
@@ -242,14 +317,13 @@ bool ChatPanel::Open(HINSTANCE instance, const RuntimeConfig& runtime)
 
     ApplyRuntime(runtime);
 
-    int w = 600;
-    int h = 540;
-    int x = GetSystemMetrics(SM_CXSCREEN) - w - 24;
-    int y = 72;
+    RECT startRect = LoadWindowRect(windowStatePath_);
+    int w = startRect.right - startRect.left;
+    int h = startRect.bottom - startRect.top;
 
     hwnd_ = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED,
         kClass, L"ETS2 Chat Translator", WS_POPUP,
-        x, y, w, h, nullptr, nullptr, instance_, this);
+        startRect.left, startRect.top, w, h, nullptr, nullptr, instance_, this);
     if (!hwnd_) return false;
 
     SetLayeredWindowAttributes(hwnd_, 0, OverlayAlpha(runtime.overlayOpacity), LWA_ALPHA);
@@ -309,6 +383,7 @@ void ChatPanel::ApplyRuntime(const RuntimeConfig& runtime)
 void ChatPanel::Close()
 {
     if (hwnd_) {
+        SaveWindowState();
         if (hotkeyRegistered_) {
             UnregisterHotKey(hwnd_, hotkeyId_);
             hotkeyRegistered_ = false;
@@ -411,6 +486,22 @@ void ChatPanel::ToggleVisible()
     InvalidateRect(hwnd_, nullptr, FALSE);
 }
 
+void ChatPanel::SaveWindowState() const
+{
+    if (!hwnd_ || windowStatePath_.empty()) return;
+    RECT rect{};
+    if (!GetWindowRect(hwnd_, &rect)) return;
+    rect = ClampWindowRect(rect);
+    std::ofstream f(windowStatePath_, std::ios::binary);
+    if (!f) return;
+    f << "{\n"
+      << "  \"x\": " << rect.left << ",\n"
+      << "  \"y\": " << rect.top << ",\n"
+      << "  \"width\": " << (rect.right - rect.left) << ",\n"
+      << "  \"height\": " << (rect.bottom - rect.top) << "\n"
+      << "}\n";
+}
+
 LRESULT CALLBACK ChatPanel::WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {
     ChatPanel* self = nullptr;
@@ -485,6 +576,9 @@ LRESULT CALLBACK ChatPanel::WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
         self->LayoutSearchBox(rc);
         return 0;
     }
+    case WM_EXITSIZEMOVE:
+        self->SaveWindowState();
+        return 0;
     case WM_COMMAND:
         if ((int)LOWORD(wp) == self->searchBoxId_ && HIWORD(wp) == EN_CHANGE) {
             self->UpdateSearchText();

@@ -26,7 +26,7 @@ ETS2 / ATS / TruckersMP 聊天翻译插件。DLL 以 **SCS Telemetry** 插件形
 
 ## ✨ 功能特点
 
-- 🎮 **沉浸式覆盖窗口**：无缝贴合游戏，支持自定义字体大小、透明度和快捷键显示/隐藏。
+- 🎮 **沉浸式覆盖窗口**：无缝贴合游戏，支持自定义字体大小、透明度、快捷键显示/隐藏，并会记住上次窗口位置和大小。
 - ⚡ **高性能异步翻译**：多 Worker 并发处理、同文本请求合并、队列限制、内存缓存；悬浮窗隐藏时不再发起翻译请求，减少无效 API 消耗。
 - 🔄 **只读最新消息**：智能从文件末尾开始监听，拒绝历史日志刷屏。
 - 🔌 **热重载支持**：修改配置后立即生效，下一条聊天自动重启翻译引擎。
@@ -45,7 +45,7 @@ ETS2 / ATS / TruckersMP 聊天翻译插件。DLL 以 **SCS Telemetry** 插件形
 
 1. **下载并运行安装包**：
    ```bash
-   build\installer\ETS2-Chat-Translator-Manager-Setup-0.3.1.exe
+   build\installer\ETS2-Chat-Translator-Manager-Setup-0.3.2.exe
    ```
 2. **打开管理器**：启动 `ETS2 Chat Translator Manager`。
 3. **定位游戏目录**：选择 ETS2 或 ATS，并自动识别或手动选择对应安装目录。
@@ -198,7 +198,7 @@ build.bat --no-pause
 
 ```text
 build\ets2_chat_translator.dll                        # 核心 DLL
-build\installer\ETS2-Chat-Translator-Manager-Setup-0.3.1.exe # 安装包
+build\installer\ETS2-Chat-Translator-Manager-Setup-0.3.2.exe # 安装包
 build\ets2_chat_translator_app\ETS2 Chat Translator Manager.exe # 免安装管理器
 ```
 *注：安装包使用 NSIS 制作，DLL 会自动打包进管理器的 `resources` 目录。*
