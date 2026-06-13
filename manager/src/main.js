@@ -7,6 +7,61 @@ const crypto = require('crypto');
 const DLL_NAME = 'ets2_chat_translator.dll';
 const CONFIG_NAME = 'ets2_chat_translator_config.json';
 const PRESETS_NAME = 'config_presets.json';
+const UPDATE_SETTINGS_NAME = 'update_settings.json';
+const UPDATE_REPO = 'Seven-TMP/ets2-chat-translator';
+const VERSION_MANIFEST_URL = `https://raw.githubusercontent.com/${UPDATE_REPO}/main/version.json`;
+const UPDATE_API_URL = `https://api.github.com/repos/${UPDATE_REPO}/releases/latest`;
+const UPDATE_MIRROR_TEST_URL = `https://github.com/${UPDATE_REPO}/releases/latest`;
+const DIRECT_PROXY_ID = 'direct';
+
+const UPDATE_PROXIES = [
+  'github.chenc.dev',
+  'ghproxy.cfd',
+  'github.tbedu.top',
+  'ghproxy.cc',
+  'gh.monlor.com',
+  'cdn.akaere.online',
+  'gh.idayer.com',
+  'gh.llkk.cc',
+  'ghpxy.hwinzniej.top',
+  'github-proxy.memory-echoes.cn',
+  'git.yylx.win',
+  'gitproxy.mrhjx.cn',
+  'gh.fhjhy.top',
+  'gp.zkitefly.eu.org',
+  'gh-proxy.com',
+  'ghfile.geekertao.top',
+  'j.1lin.dpdns.org',
+  'ghproxy.imciel.com',
+  'github-proxy.teach-english.tech',
+  'gh.927223.xyz',
+  'github.ednovas.xyz',
+  'ghf.xn--eqrr82bzpe.top',
+  'gh.dpik.top',
+  'gh.jasonzeng.dev',
+  'gh.xxooo.cf',
+  'gh.bugdey.us.kg',
+  'ghm.078465.xyz',
+  'j.1win.ggff.net',
+  'tvv.tw',
+  'gitproxy.127731.xyz',
+  'gh.inkchills.cn',
+  'ghproxy.cxkpro.top',
+  'gh.sixyin.com',
+  'github.geekery.cn',
+  'git.669966.xyz',
+  'gh.5050net.cn',
+  'gh.felicity.ac.cn',
+  'github.dpik.top',
+  'ghp.keleyaa.com',
+  'gh.wsmdn.dpdns.org',
+  'ghproxy.monkeyray.net',
+  'fastgit.cc',
+  'gh.catmak.name',
+  'gh.noki.icu'
+].map((host) => ({ id: host, label: host, baseUrl: `https://${host}` })).concat([
+  { id: DIRECT_PROXY_ID, label: 'GitHub 直连', baseUrl: '' }
+]);
 
 function iconPath() {
   const packaged = path.join(process.resourcesPath || '', 'logo.ico');
@@ -112,6 +167,285 @@ function configPath(ets2Path) {
 
 function presetsPath() {
   return path.join(app.getPath('userData'), PRESETS_NAME);
+}
+
+function updateSettingsPath() {
+  return path.join(app.getPath('userData'), UPDATE_SETTINGS_NAME);
+}
+
+function defaultUpdateSettings() {
+  return {
+    proxyMode: 'auto',
+    proxyId: UPDATE_PROXIES[0].id,
+    customProxyUrl: '',
+    lastFastProxyId: '',
+    updatedAt: ''
+  };
+}
+
+function readUpdateSettings() {
+  const file = updateSettingsPath();
+  if (!fs.existsSync(file)) return defaultUpdateSettings();
+  try {
+    return { ...defaultUpdateSettings(), ...JSON.parse(fs.readFileSync(file, 'utf8')) };
+  } catch {
+    return defaultUpdateSettings();
+  }
+}
+
+function writeUpdateSettings(settings) {
+  const next = {
+    ...defaultUpdateSettings(),
+    ...settings,
+    updatedAt: new Date().toISOString()
+  };
+  fs.mkdirSync(path.dirname(updateSettingsPath()), { recursive: true });
+  fs.writeFileSync(updateSettingsPath(), JSON.stringify(next, null, 2), 'utf8');
+  return next;
+}
+
+function appVersion() {
+  try {
+    return app.getVersion();
+  } catch {
+    try {
+      return require('../package.json').version || '0.0.0';
+    } catch {
+      return '0.0.0';
+    }
+  }
+}
+
+function parseVersion(value) {
+  return String(value || '')
+    .replace(/^v/i, '')
+    .split(/[.+-]/)
+    .slice(0, 3)
+    .map((part) => Number.parseInt(part, 10) || 0);
+}
+
+function compareVersions(a, b) {
+  const left = parseVersion(a);
+  const right = parseVersion(b);
+  for (let i = 0; i < 3; ++i) {
+    if ((left[i] || 0) > (right[i] || 0)) return 1;
+    if ((left[i] || 0) < (right[i] || 0)) return -1;
+  }
+  return 0;
+}
+
+function proxyById(id) {
+  return UPDATE_PROXIES.find((item) => item.id === id) || UPDATE_PROXIES[0];
+}
+
+function normalizeProxyBaseUrl(value) {
+  let text = String(value || '').trim();
+  if (!text) return '';
+  if (!/^https?:\/\//i.test(text)) text = `https://${text}`;
+  const parsed = new URL(text);
+  return `${parsed.protocol}//${parsed.host}${parsed.pathname.replace(/\/+$/, '')}`;
+}
+
+function customProxyFromUrl(value) {
+  const baseUrl = normalizeProxyBaseUrl(value);
+  if (!baseUrl) return null;
+  const parsed = new URL(baseUrl);
+  return {
+    id: 'custom',
+    label: parsed.host,
+    baseUrl
+  };
+}
+
+function proxyFromSettings(settings) {
+  const current = { ...defaultUpdateSettings(), ...(settings || {}) };
+  if (current.proxyMode === 'custom' && current.customProxyUrl) {
+    try {
+      const custom = customProxyFromUrl(current.customProxyUrl);
+      if (custom) return custom;
+    } catch (error) {
+      throw new Error(`自定义镜像地址无效：${error.message}`);
+    }
+  }
+  if (current.proxyMode === 'manual') return proxyById(current.proxyId);
+  if (current.lastFastProxyId) return proxyById(current.lastFastProxyId);
+  return proxyById(current.proxyId || DIRECT_PROXY_ID);
+}
+
+function proxiedUrl(originalUrl, proxy) {
+  if (!proxy || proxy.id === DIRECT_PROXY_ID || !proxy.baseUrl) return originalUrl;
+  return `${proxy.baseUrl.replace(/\/+$/, '')}/${originalUrl}`;
+}
+
+function requestBuffer(urlText, headers = {}, timeoutMs = 8000, redirects = 4) {
+  return new Promise((resolve) => {
+    const started = Date.now();
+    let url;
+    try {
+      url = new URL(urlText);
+    } catch (error) {
+      resolve({ status: 0, body: Buffer.alloc(0), headers: {}, error: `bad url: ${error.message}`, elapsedMs: 0 });
+      return;
+    }
+
+    const lib = url.protocol === 'http:' ? require('http') : require('https');
+    const req = lib.request(url, {
+      method: 'GET',
+      headers,
+      timeout: Math.max(1500, timeoutMs || 8000)
+    }, (res) => {
+      const status = res.statusCode || 0;
+      const location = res.headers.location;
+      if (status >= 300 && status < 400 && location && redirects > 0) {
+        res.resume();
+        const nextUrl = new URL(location, url).toString();
+        requestBuffer(nextUrl, headers, timeoutMs, redirects - 1).then(resolve);
+        return;
+      }
+
+      const chunks = [];
+      let size = 0;
+      res.on('data', (chunk) => {
+        size += chunk.length;
+        if (size <= 1024 * 1024) chunks.push(chunk);
+      });
+      res.on('end', () => {
+        resolve({
+          status,
+          body: Buffer.concat(chunks),
+          headers: res.headers,
+          elapsedMs: Date.now() - started
+        });
+      });
+    });
+    req.on('timeout', () => req.destroy(new Error('timeout')));
+    req.on('error', (error) => {
+      resolve({ status: 0, body: Buffer.alloc(0), headers: {}, error: error.message, elapsedMs: Date.now() - started });
+    });
+    req.end();
+  });
+}
+
+function requestJsonViaProxy(urlText, proxy, timeoutMs = 9000) {
+  return requestBuffer(proxiedUrl(urlText, proxy), {
+    Accept: 'application/vnd.github+json',
+    'User-Agent': 'ETS2-Chat-Translator-Manager'
+  }, timeoutMs).then((reply) => {
+    if (reply.status < 200 || reply.status >= 300) {
+      const body = reply.body.toString('utf8').slice(0, 500);
+      throw new Error(reply.error || `HTTP ${reply.status}${body ? `: ${body}` : ''}`);
+    }
+    try {
+      return {
+        data: JSON.parse(reply.body.toString('utf8')),
+        elapsedMs: reply.elapsedMs,
+        proxy
+      };
+    } catch (error) {
+      throw new Error(`JSON 解析失败：${error.message}`);
+    }
+  });
+}
+
+function requestHeadViaProxy(urlText, proxy, timeoutMs = 3500) {
+  return new Promise((resolve) => {
+    const started = Date.now();
+    let url;
+    try {
+      url = new URL(proxiedUrl(urlText, proxy));
+    } catch (error) {
+      resolve({ status: 0, error: `bad url: ${error.message}`, elapsedMs: 0 });
+      return;
+    }
+
+    const lib = url.protocol === 'http:' ? require('http') : require('https');
+    const req = lib.request(url, {
+      method: 'HEAD',
+      headers: { 'User-Agent': 'ETS2-Chat-Translator-Manager' },
+      timeout: Math.max(1200, timeoutMs || 3500)
+    }, (res) => {
+      res.resume();
+      resolve({
+        status: res.statusCode || 0,
+        headers: res.headers,
+        elapsedMs: Date.now() - started
+      });
+    });
+    req.on('timeout', () => req.destroy(new Error('timeout')));
+    req.on('error', (error) => {
+      resolve({ status: 0, error: error.message, elapsedMs: Date.now() - started });
+    });
+    req.end();
+  });
+}
+
+function downloadFileViaProxy(urlText, proxy, destination, onProgress, timeoutMs = 30000, redirects = 5) {
+  return new Promise((resolve, reject) => {
+    let url;
+    try {
+      url = new URL(proxiedUrl(urlText, proxy));
+    } catch (error) {
+      reject(new Error(`bad url: ${error.message}`));
+      return;
+    }
+
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    const tempPath = `${destination}.download`;
+    if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+
+    const start = Date.now();
+    const headers = {
+      Accept: 'application/octet-stream',
+      'User-Agent': 'ETS2-Chat-Translator-Manager'
+    };
+
+    const run = (targetUrl, redirectLeft) => {
+      const target = new URL(targetUrl);
+      const lib = target.protocol === 'http:' ? require('http') : require('https');
+      const req = lib.request(target, { method: 'GET', headers, timeout: Math.max(5000, timeoutMs || 30000) }, (res) => {
+        const status = res.statusCode || 0;
+        const location = res.headers.location;
+        if (status >= 300 && status < 400 && location && redirectLeft > 0) {
+          res.resume();
+          run(new URL(location, target).toString(), redirectLeft - 1);
+          return;
+        }
+        if (status < 200 || status >= 300) {
+          res.resume();
+          reject(new Error(`HTTP ${status}`));
+          return;
+        }
+
+        const total = Number.parseInt(res.headers['content-length'] || '0', 10) || 0;
+        let downloaded = 0;
+        const file = fs.createWriteStream(tempPath);
+        res.on('data', (chunk) => {
+          downloaded += chunk.length;
+          if (onProgress) onProgress({ downloaded, total, percent: total ? Math.round(downloaded * 100 / total) : 0 });
+        });
+        res.pipe(file);
+        file.on('finish', () => {
+          file.close(() => {
+            if (fs.existsSync(destination)) fs.unlinkSync(destination);
+            fs.renameSync(tempPath, destination);
+            resolve({ path: destination, bytes: downloaded, elapsedMs: Date.now() - start, proxy });
+          });
+        });
+        file.on('error', reject);
+      });
+      req.on('timeout', () => req.destroy(new Error('timeout')));
+      req.on('error', reject);
+      req.end();
+    };
+
+    run(url.toString(), redirects);
+  }).catch((error) => {
+    const tempPath = `${destination}.download`;
+    if (fs.existsSync(tempPath)) {
+      try { fs.unlinkSync(tempPath); } catch {}
+    }
+    throw error;
+  });
 }
 
 function readPresets() {
@@ -896,6 +1230,200 @@ function installState(game, ets2Path) {
   };
 }
 
+function formatBytes(value) {
+  const size = Number(value) || 0;
+  if (size >= 1024 * 1024) return `${(size / 1024 / 1024).toFixed(1)} MB`;
+  if (size >= 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${size} B`;
+}
+
+function releaseAsset(release) {
+  const assets = Array.isArray(release?.assets) ? release.assets : [];
+  return assets.find((asset) => /\.exe$/i.test(asset.name || '') && /setup|manager/i.test(asset.name || '')) ||
+    assets.find((asset) => /\.exe$/i.test(asset.name || '')) ||
+    null;
+}
+
+function manifestToRelease(manifest) {
+  const version = manifest.version || manifest.latestVersion || manifest.tag_name || manifest.tagName || '';
+  const tag = String(manifest.tag_name || manifest.tagName || version || '').replace(/^([^v])/i, 'v$1');
+  const downloadUrl = manifest.download_url || manifest.downloadUrl || manifest.url || manifest.installer || '';
+  const assetName = manifest.asset_name || manifest.assetName ||
+    (downloadUrl ? path.basename(new URL(downloadUrl).pathname) : `ETS2-Chat-Translator-Manager-Setup-${String(version).replace(/^v/i, '')}.exe`);
+  return {
+    tag_name: tag,
+    name: manifest.name || tag,
+    body: manifest.body || manifest.notes || manifest.changelog || '',
+    html_url: manifest.html_url || manifest.htmlUrl || `https://github.com/${UPDATE_REPO}/releases/tag/${tag}`,
+    published_at: manifest.published_at || manifest.publishedAt || '',
+    assets: downloadUrl ? [{
+      name: assetName,
+      size: manifest.size || 0,
+      browser_download_url: downloadUrl
+    }] : []
+  };
+}
+
+function releaseSummary(release, proxy, elapsedMs) {
+  const tag = release.tag_name || release.name || '';
+  const asset = releaseAsset(release);
+  return {
+    currentVersion: appVersion(),
+    latestVersion: tag.replace(/^v/i, ''),
+    tagName: tag,
+    hasUpdate: compareVersions(tag, appVersion()) > 0,
+    name: release.name || tag,
+    body: release.body || '',
+    htmlUrl: release.html_url || `https://github.com/${UPDATE_REPO}/releases/latest`,
+    publishedAt: release.published_at || release.created_at || '',
+    proxyId: proxy?.id || DIRECT_PROXY_ID,
+    proxyLabel: proxy?.label || 'GitHub 直连',
+    elapsedMs,
+    asset: asset ? {
+      name: asset.name,
+      size: asset.size || 0,
+      sizeText: formatBytes(asset.size || 0),
+      downloadUrl: asset.browser_download_url || asset.url || ''
+    } : null
+  };
+}
+
+async function requestReleaseViaProxy(proxy, timeoutMs = 9000) {
+  try {
+    const manifestResult = await requestJsonViaProxy(VERSION_MANIFEST_URL, proxy, timeoutMs);
+    return {
+      release: manifestToRelease(manifestResult.data),
+      elapsedMs: manifestResult.elapsedMs,
+      proxy,
+      source: 'version.json'
+    };
+  } catch (manifestError) {
+    const apiResult = await requestJsonViaProxy(UPDATE_API_URL, proxy, timeoutMs);
+    return {
+      release: apiResult.data,
+      elapsedMs: apiResult.elapsedMs,
+      proxy,
+      source: 'github-api',
+      manifestError: manifestError.message
+    };
+  }
+}
+
+async function testUpdateProxy(proxy, timeoutMs = 7000) {
+  const started = Date.now();
+  const result = await requestHeadViaProxy(UPDATE_MIRROR_TEST_URL, proxy, timeoutMs);
+  const status = result.status || 0;
+  const ok = (status >= 200 && status < 400) || status === 405;
+  const rawError = result.error || (status ? `HTTP ${status}` : '未返回状态');
+  return {
+    id: proxy.id,
+    label: proxy.label,
+    ok,
+    elapsedMs: result.elapsedMs || (Date.now() - started),
+    status,
+    tagName: '',
+    source: 'head',
+    error: ok ? '' : String(/timeout/i.test(rawError) ? '超时' : rawError).slice(0, 180)
+  };
+}
+
+async function speedTestUpdateProxies(saveFast = true) {
+  const proxies = [...UPDATE_PROXIES];
+  const concurrency = 10;
+  const results = new Array(proxies.length);
+  let cursor = 0;
+  const workerCount = Math.min(concurrency, proxies.length);
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (cursor < proxies.length) {
+      const index = cursor++;
+      const proxy = proxies[index];
+      results[index] = await testUpdateProxy(proxy, proxy.id === DIRECT_PROXY_ID ? 5000 : 3500);
+    }
+  });
+  await Promise.all(workers);
+
+  results.sort((a, b) => {
+    if (a.ok !== b.ok) return a.ok ? -1 : 1;
+    if (a.ok && b.ok) return a.elapsedMs - b.elapsedMs;
+    const leftTimedOut = /timeout|超时/i.test(a.error || '');
+    const rightTimedOut = /timeout|超时/i.test(b.error || '');
+    if (leftTimedOut !== rightTimedOut) return leftTimedOut ? 1 : -1;
+    return proxies.findIndex((proxy) => proxy.id === a.id) - proxies.findIndex((proxy) => proxy.id === b.id);
+  });
+
+  const fastest = results.find((item) => item.ok) || null;
+  if (saveFast && fastest) {
+    const settings = readUpdateSettings();
+    writeUpdateSettings({ ...settings, lastFastProxyId: fastest.id });
+  }
+  return { fastest, results };
+}
+
+async function chooseUpdateProxy() {
+  const settings = readUpdateSettings();
+  if (settings.proxyMode === 'manual' || settings.proxyMode === 'custom' || settings.lastFastProxyId) {
+    return proxyFromSettings(settings);
+  }
+  const tested = await speedTestUpdateProxies(true);
+  return proxyById(tested.fastest?.id || DIRECT_PROXY_ID);
+}
+
+async function checkForUpdates(forceSpeedTest = false) {
+  let proxy = await chooseUpdateProxy();
+  let speedTest = null;
+  if (forceSpeedTest) {
+    speedTest = await speedTestUpdateProxies(true);
+    if (speedTest.fastest) proxy = proxyById(speedTest.fastest.id);
+  }
+
+  const result = await requestReleaseViaProxy(proxy, proxy.id === DIRECT_PROXY_ID ? 10000 : 8000);
+  return {
+    ...releaseSummary(result.release, proxy, result.elapsedMs),
+    source: result.source,
+    manifestError: result.manifestError || '',
+    settings: readUpdateSettings(),
+    proxies: UPDATE_PROXIES,
+    speedTest
+  };
+}
+
+async function downloadAndInstallUpdate(downloadUrl, fileName, proxyId) {
+  if (!downloadUrl || !/^https?:\/\//i.test(downloadUrl)) throw new Error('缺少有效下载地址');
+  const settings = readUpdateSettings();
+  const proxy = proxyId === 'custom'
+    ? proxyFromSettings({ ...settings, proxyMode: 'custom' })
+    : proxyId ? proxyById(proxyId) : await chooseUpdateProxy();
+  const cleanName = String(fileName || path.basename(new URL(downloadUrl).pathname) || 'ETS2-Chat-Translator-Manager-Setup.exe')
+    .replace(/[<>:"/\\|?*]/g, '_');
+  const destination = path.join(app.getPath('downloads'), cleanName);
+  const result = await downloadFileViaProxy(downloadUrl, proxy, destination, (progress) => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    mainWindow.webContents.send('update-download-progress', {
+      ...progress,
+      downloadedText: formatBytes(progress.downloaded),
+      totalText: progress.total ? formatBytes(progress.total) : '',
+      fileName: cleanName,
+      proxyId: proxy.id,
+      proxyLabel: proxy.label
+    });
+  });
+
+  childProcess.spawn(result.path, [], {
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: false
+  }).unref();
+
+  return {
+    path: result.path,
+    bytes: result.bytes,
+    bytesText: formatBytes(result.bytes),
+    elapsedMs: result.elapsedMs,
+    proxyId: proxy.id,
+    proxyLabel: proxy.label
+  };
+}
+
 ipcMain.handle('detect-path', (_event, game) => detectGamePath(game));
 
 ipcMain.handle('browse-path', async (_event, game) => {
@@ -945,3 +1473,12 @@ ipcMain.handle('test-config', (_event, jsonText) => testConfigText(jsonText));
 ipcMain.handle('list-presets', () => readPresets());
 ipcMain.handle('save-preset', (_event, name, jsonText) => savePreset(name, jsonText));
 ipcMain.handle('delete-preset', (_event, name) => deletePreset(name));
+ipcMain.handle('get-update-options', () => ({
+  version: appVersion(),
+  settings: readUpdateSettings(),
+  proxies: UPDATE_PROXIES
+}));
+ipcMain.handle('save-update-settings', (_event, settings) => writeUpdateSettings(settings || {}));
+ipcMain.handle('speed-test-update-proxies', () => speedTestUpdateProxies(true));
+ipcMain.handle('check-update', (_event, forceSpeedTest) => checkForUpdates(!!forceSpeedTest));
+ipcMain.handle('download-update', (_event, downloadUrl, fileName, proxyId) => downloadAndInstallUpdate(downloadUrl, fileName, proxyId));

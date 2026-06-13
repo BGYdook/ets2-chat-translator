@@ -11,5 +11,13 @@ contextBridge.exposeInMainWorld('managerApi', {
   testConfig: (jsonText) => ipcRenderer.invoke('test-config', jsonText),
   listPresets: () => ipcRenderer.invoke('list-presets'),
   savePreset: (name, jsonText) => ipcRenderer.invoke('save-preset', name, jsonText),
-  deletePreset: (name) => ipcRenderer.invoke('delete-preset', name)
+  deletePreset: (name) => ipcRenderer.invoke('delete-preset', name),
+  getUpdateOptions: () => ipcRenderer.invoke('get-update-options'),
+  saveUpdateSettings: (settings) => ipcRenderer.invoke('save-update-settings', settings),
+  speedTestUpdateProxies: () => ipcRenderer.invoke('speed-test-update-proxies'),
+  checkUpdate: (forceSpeedTest) => ipcRenderer.invoke('check-update', forceSpeedTest),
+  downloadUpdate: (downloadUrl, fileName, proxyId) => ipcRenderer.invoke('download-update', downloadUrl, fileName, proxyId),
+  onUpdateDownloadProgress: (callback) => {
+    ipcRenderer.on('update-download-progress', (_event, progress) => callback(progress));
+  }
 });

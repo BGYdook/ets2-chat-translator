@@ -742,6 +742,11 @@ std::wstring SourceOrGuess(const std::wstring& configured, const std::wstring& i
     return GuessSourceLanguage(input);
 }
 
+std::wstring EffectiveTarget(const ProviderSettings& settings, const RuntimeConfig& runtime)
+{
+    return settings.targetLanguage.empty() ? runtime.targetLanguage : settings.targetLanguage;
+}
+
 std::wstring TargetForDeepL(const std::wstring& target)
 {
     std::wstring value = LowerAscii(target.empty() ? L"zh-CN" : target);
@@ -991,6 +996,27 @@ std::wstring TargetForBaidu(const std::wstring& target)
     return value;
 }
 
+std::wstring BaiduErrorMessage(const std::wstring& codeOrMessage)
+{
+    std::wstring value = LowerAscii(codeOrMessage);
+    if (value.find(L"invalid_to_param") != std::wstring::npos || value.find(L"58001") != std::wstring::npos) {
+        return L"INVALID_TO_PARAM(百度目标语言参数无效，中文请使用 zh；插件已自动兼容 zh-CN)";
+    }
+    if (value.find(L"invalid_from_param") != std::wstring::npos || value.find(L"58000") != std::wstring::npos) {
+        return L"INVALID_FROM_PARAM(百度源语言参数无效，建议源语言设为 auto)";
+    }
+    if (value.find(L"invalid_sign") != std::wstring::npos || value.find(L"54001") != std::wstring::npos) {
+        return L"INVALID_SIGN(百度签名错误，请检查 APP ID 和密钥)";
+    }
+    if (value.find(L"54003") != std::wstring::npos) {
+        return L"ACCESS_FREQUENCY_LIMITED(百度请求过快，请降低 workers 或稍后再试)";
+    }
+    if (value.find(L"52003") != std::wstring::npos) {
+        return L"UNAUTHORIZED_USER(百度 APP ID 或密钥不正确)";
+    }
+    return codeOrMessage;
+}
+
 std::wstring TargetForYoudao(const std::wstring& target)
 {
     std::wstring value = LowerAscii(target.empty() ? L"zh-CN" : target);
@@ -1123,7 +1149,7 @@ public:
     std::wstring Translate(const std::wstring& input, const RuntimeConfig& runtime, HttpAgent& http, std::wstring& error) override
     {
         std::wstring from = SourceOrGuess(settings_.sourceLanguage, input);
-        std::wstring to = runtime.targetLanguage.empty() ? L"zh-CN" : runtime.targetLanguage;
+        std::wstring to = EffectiveTarget(settings_, runtime).empty() ? L"zh-CN" : EffectiveTarget(settings_, runtime);
         std::wstring path = L"/get?q=" + text::PercentEncode(input) + L"&langpair=" + from + L"|" + to;
         NetReply r = http.Get(L"api.mymemory.translated.net", 443, path, true);
         LogLine(L"[TranslateHTTP] MyMemory source=" + from + L" " + StatusLabel(r) + L" payload=" + PayloadPreview(r.payload));
@@ -1166,7 +1192,7 @@ public:
             ? L"deepseek-v4-flash"
             : settings_.model;
 
-        std::wstring target = runtime.targetLanguage.empty() ? L"zh-CN" : runtime.targetLanguage;
+        std::wstring target = EffectiveTarget(settings_, runtime).empty() ? L"zh-CN" : EffectiveTarget(settings_, runtime);
         std::wstring prompt = L"You translate TruckersMP/ETS2 multiplayer chat into " + target +
             L". Output only the translation, no quotes or explanations. "
             L"Translate any source language and short slang. Common chat: sry/sorry=抱歉, pls/plz=请, ty/thx=谢谢, "
@@ -1241,7 +1267,7 @@ public:
             return L"";
         }
 
-        std::wstring target = runtime.targetLanguage.empty() ? L"zh-CN" : runtime.targetLanguage;
+        std::wstring target = EffectiveTarget(settings_, runtime).empty() ? L"zh-CN" : EffectiveTarget(settings_, runtime);
         std::wstring prompt = L"You translate TruckersMP/ETS2 multiplayer chat into " + target +
             L". Output only the translation, no quotes or explanations. "
             L"Translate short slang and multilingual chat. Common chat: rec=已录屏, rec ban=已录屏，等封禁, wtf=什么鬼, ty/thx=谢谢. "
@@ -1295,7 +1321,7 @@ public:
         }
 
         std::string body = FormPair("text", input) + "&" +
-            FormPair("target_lang", TargetForDeepL(runtime.targetLanguage));
+            FormPair("target_lang", TargetForDeepL(EffectiveTarget(settings_, runtime)));
         if (!settings_.sourceLanguage.empty() && settings_.sourceLanguage != L"auto") {
             std::wstring source = settings_.sourceLanguage;
             std::transform(source.begin(), source.end(), source.begin(), towupper);
@@ -1342,7 +1368,7 @@ public:
 
         std::wstring path = prefix + L"/language/translate/v2?key=" + text::PercentEncode(settings_.apiKey) +
             L"&q=" + text::PercentEncode(input) +
-            L"&target=" + text::PercentEncode(TargetForSimpleApi(runtime.targetLanguage)) +
+            L"&target=" + text::PercentEncode(TargetForSimpleApi(EffectiveTarget(settings_, runtime))) +
             L"&format=text";
         if (!settings_.sourceLanguage.empty() && settings_.sourceLanguage != L"auto") {
             path += L"&source=" + text::PercentEncode(settings_.sourceLanguage);
@@ -1381,7 +1407,7 @@ public:
         }
 
         std::wstring source = settings_.sourceLanguage.empty() ? L"auto" : settings_.sourceLanguage;
-        std::wstring target = TargetForSimpleApi(runtime.targetLanguage);
+        std::wstring target = TargetForSimpleApi(EffectiveTarget(settings_, runtime));
         std::string body = "{";
         body += "\"q\":\"" + text::EscapeJson(input) + "\",";
         body += "\"source\":\"" + text::EscapeJson(source) + "\",";
@@ -1428,7 +1454,7 @@ public:
         }
 
         std::wstring path = prefix + L"/translate?api-version=3.0&to=" +
-            text::PercentEncode(TargetForSimpleApi(runtime.targetLanguage));
+            text::PercentEncode(TargetForSimpleApi(EffectiveTarget(settings_, runtime)));
         if (!settings_.sourceLanguage.empty() && settings_.sourceLanguage != L"auto") {
             path += L"&from=" + text::PercentEncode(settings_.sourceLanguage);
         }
@@ -1476,7 +1502,7 @@ public:
 
         std::wstring salt = RandomSalt();
         std::wstring from = SourceForBaidu(SourceOrGuess(settings_.sourceLanguage, input));
-        std::wstring to = TargetForBaidu(runtime.targetLanguage);
+        std::wstring to = TargetForBaidu(EffectiveTarget(settings_, runtime));
         std::string sign = Md5Hex(settings_.apiKey + input + salt + settings_.apiSecret);
         if (sign.empty()) {
             error = L"sign failed";
@@ -1503,7 +1529,7 @@ public:
         std::wstring out = FirstJsonString(r.payload, { "dst", "translatedText", "translation" });
         if (out.empty()) {
             std::wstring msg = FirstJsonString(r.payload, { "error_msg", "error_code" });
-            error = msg.empty() ? L"cannot parse response" : msg;
+            error = msg.empty() ? L"cannot parse response" : BaiduErrorMessage(msg);
         }
         return out;
     }
@@ -1529,7 +1555,7 @@ public:
         std::wstring salt = RandomSalt();
         std::wstring curtime = UnixSeconds();
         std::wstring from = settings_.sourceLanguage.empty() ? L"auto" : settings_.sourceLanguage;
-        std::wstring to = TargetForYoudao(runtime.targetLanguage);
+        std::wstring to = TargetForYoudao(EffectiveTarget(settings_, runtime));
         std::string sign = Sha256Hex(settings_.apiKey + YoudaoInputForSign(input) + salt + curtime + settings_.apiSecret);
         if (sign.empty()) {
             error = L"sign failed";
@@ -1588,7 +1614,7 @@ public:
         if (prefix.empty()) prefix = L"/";
 
         std::wstring source = SourceForTencent(settings_.sourceLanguage);
-        std::wstring target = TargetForTencent(runtime.targetLanguage);
+        std::wstring target = TargetForTencent(EffectiveTarget(settings_, runtime));
         std::string body = "{";
         body += "\"SourceText\":\"" + text::EscapeJson(input) + "\",";
         body += "\"Source\":\"" + text::EscapeJson(source) + "\",";
@@ -1683,7 +1709,7 @@ public:
             { L"SignatureVersion", L"1.0" },
             { L"SourceLanguage", SourceForAliyun(settings_.sourceLanguage) },
             { L"SourceText", input },
-            { L"TargetLanguage", TargetForAliyun(runtime.targetLanguage) },
+            { L"TargetLanguage", TargetForAliyun(EffectiveTarget(settings_, runtime)) },
             { L"Timestamp", Iso8601Utc() },
             { L"Version", L"2018-10-12" }
         };
@@ -1741,7 +1767,7 @@ public:
         body += "\"TextList\":[\"" + text::EscapeJson(input) + "\"],";
         std::wstring source = SourceForVolcengine(settings_.sourceLanguage);
         if (!source.empty()) body += "\"SourceLanguage\":\"" + text::EscapeJson(source) + "\",";
-        body += "\"TargetLanguage\":\"" + text::EscapeJson(TargetForVolcengine(runtime.targetLanguage)) + "\"";
+        body += "\"TargetLanguage\":\"" + text::EscapeJson(TargetForVolcengine(EffectiveTarget(settings_, runtime))) + "\"";
         body += "}";
 
         std::string date;

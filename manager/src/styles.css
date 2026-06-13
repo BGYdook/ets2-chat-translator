@@ -256,6 +256,225 @@ h2 {
   text-overflow: ellipsis;
 }
 
+.update-panel .section-title {
+  margin-bottom: 14px;
+}
+
+.update-layout {
+  display: grid;
+  grid-template-columns: minmax(420px, 0.78fr) minmax(420px, 1fr);
+  grid-template-areas:
+    "controls notes"
+    "info notes";
+  gap: 14px;
+  align-items: start;
+}
+
+.mirror-panel {
+  grid-area: controls;
+  padding: 12px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: rgba(10, 15, 25, 0.42);
+}
+
+.mirror-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.mirror-head h3 {
+  display: inline;
+  margin-right: 8px;
+  font-size: 16px;
+  color: var(--text-main);
+}
+
+.mirror-head span {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.mirror-head b {
+  color: #8ea2ff;
+  font-weight: 600;
+}
+
+.mirror-head button {
+  height: 34px;
+  padding: 0 14px;
+}
+
+.mirror-editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.mirror-editor button {
+  height: 38px;
+  padding: 0 12px;
+}
+
+.mirror-list {
+  max-height: 280px;
+  overflow: auto;
+  border-top: 1px solid var(--panel-border);
+}
+
+.mirror-row {
+  min-height: 34px;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 70px 54px;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--panel-border);
+  font-size: 13px;
+}
+
+.mirror-row.active {
+  margin: 0 -8px;
+  padding-left: 8px;
+  padding-right: 8px;
+  background: rgba(99, 125, 220, 0.72);
+}
+
+.mirror-rank {
+  color: #8e96bd;
+  text-align: center;
+}
+
+.mirror-name {
+  color: #cdd7ff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mirror-time {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.mirror-time.ok {
+  color: #22c55e;
+}
+
+.mirror-time.fail {
+  color: #ef4444;
+  font-weight: 700;
+}
+
+.mirror-time.idle {
+  color: var(--text-muted);
+}
+
+.mirror-use {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.mirror-empty {
+  padding: 12px 4px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.update-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  white-space: nowrap;
+}
+
+.update-actions button {
+  padding: 0 14px;
+}
+
+.update-info {
+  grid-area: info;
+  display: grid;
+  gap: 10px;
+}
+
+.update-summary {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-main);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.error-text {
+  color: var(--danger-hover);
+}
+
+.update-progress {
+  display: grid;
+  gap: 7px;
+}
+
+.progress-bar {
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--panel-border);
+}
+
+.progress-bar span {
+  display: block;
+  width: 0%;
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--success));
+  transition: width 0.2s ease;
+}
+
+.release-notes {
+  grid-area: notes;
+  min-height: 260px;
+  max-height: 420px;
+  overflow: auto;
+  padding: 12px 14px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: rgba(10, 15, 25, 0.62);
+}
+
+.release-title {
+  margin-bottom: 8px;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.release-body {
+  display: grid;
+  gap: 6px;
+  color: var(--text-main);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.release-body strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-main);
+}
+
 .game-switch {
   display: inline-flex;
   gap: 4px;
@@ -433,6 +652,18 @@ button {
   align-items: center;
   justify-content: center;
   border: none;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  transform: none;
+  box-shadow: none;
+}
+
+button:disabled:hover {
+  transform: none;
+  box-shadow: none;
 }
 
 .primary-btn {
@@ -690,6 +921,8 @@ textarea:focus {
     margin: 18px auto;
   }
   .install-layout,
+  .update-layout,
+  .mirror-editor,
   .preset-toolbar,
   .basic-grid,
   .tuning-grid,
@@ -712,6 +945,10 @@ textarea:focus {
   }
   .install-panel .main-actions {
     justify-content: flex-start;
+  }
+  .update-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
   .preset-actions {
     justify-content: flex-start;
@@ -736,6 +973,17 @@ textarea:focus {
     grid-template-columns: 220px minmax(360px, 1fr);
   }
   .install-panel .main-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+  .update-layout {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "controls"
+      "info"
+      "notes";
+  }
+  .update-actions {
     grid-column: 1 / -1;
     justify-content: flex-start;
   }

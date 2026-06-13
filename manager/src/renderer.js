@@ -40,11 +40,27 @@ const els = {
   testConfigBtn: document.querySelector('#testConfigBtn'),
   saveConfigBtn: document.querySelector('#saveConfigBtn'),
   testResult: document.querySelector('#testResult'),
-  preview: document.querySelector('#preview')
+  preview: document.querySelector('#preview'),
+  updateState: document.querySelector('#updateState'),
+  currentMirror: document.querySelector('#currentMirror'),
+  mirrorUrl: document.querySelector('#mirrorUrl'),
+  saveMirrorBtn: document.querySelector('#saveMirrorBtn'),
+  clearMirrorBtn: document.querySelector('#clearMirrorBtn'),
+  mirrorList: document.querySelector('#mirrorList'),
+  speedTestBtn: document.querySelector('#speedTestBtn'),
+  checkUpdateBtn: document.querySelector('#checkUpdateBtn'),
+  downloadUpdateBtn: document.querySelector('#downloadUpdateBtn'),
+  updateSummary: document.querySelector('#updateSummary'),
+  updateProgress: document.querySelector('#updateProgress'),
+  updateProgressBar: document.querySelector('#updateProgressBar'),
+  updateProgressText: document.querySelector('#updateProgressText'),
+  releaseNotes: document.querySelector('#releaseNotes')
 };
 
 let currentGame = 'ets2';
 let configPresets = [];
+let updateInfo = null;
+let updateOptions = null;
 const GAME_LABELS = {
   ets2: 'ETS2',
   ats: 'ATS'
@@ -255,6 +271,157 @@ function renderTestResult(result) {
     <div class="test-summary ${result.ok ? 'ok' : 'fail'}">${escapeHtml(result.summary || '测试完成')}</div>
     ${rows}
   `;
+}
+
+function renderMarkdownLite(value) {
+  const text = String(value || '').trim();
+  if (!text) return '<p>这个 Release 暂时没有填写更新日志。</p>';
+  return text
+    .split(/\r?\n/)
+    .map((line) => {
+      const clean = escapeHtml(line.trim());
+      if (!clean) return '';
+      if (/^#{1,6}\s+/.test(line)) return `<strong>${clean.replace(/^#+\s*/, '')}</strong>`;
+      if (/^[-*]\s+/.test(line)) return `<p>• ${clean.replace(/^[-*]\s*/, '')}</p>`;
+      if (/^\d+\.\s+/.test(line)) return `<p>${clean}</p>`;
+      return `<p>${clean}</p>`;
+    })
+    .join('');
+}
+
+function mirrorLabel(id, customUrl = '') {
+  if (id === 'custom') {
+    try {
+      return new URL(customUrl).host;
+    } catch {
+      return customUrl || '自定义镜像';
+    }
+  }
+  const proxy = (updateOptions?.proxies || []).find((item) => item.id === id);
+  return proxy?.label || '自动测速选择';
+}
+
+function currentMirrorId() {
+  const settings = updateOptions?.settings || {};
+  if (settings.proxyMode === 'custom' && settings.customProxyUrl) return 'custom';
+  if (settings.proxyMode === 'manual') return settings.proxyId || '';
+  return settings.lastFastProxyId || '';
+}
+
+function syncMirrorHeader() {
+  const settings = updateOptions?.settings || {};
+  const id = currentMirrorId();
+  els.currentMirror.textContent = settings.proxyMode === 'auto' && !settings.lastFastProxyId
+    ? '自动测速选择'
+    : mirrorLabel(id, settings.customProxyUrl);
+  els.mirrorUrl.value = settings.customProxyUrl || (id && id !== 'direct' ? `https://${id}/` : '');
+}
+
+function formatMirrorTime(item) {
+  if (item.ok) return `${(item.elapsedMs / 1000).toFixed(item.elapsedMs >= 1000 ? 3 : 2).replace(/0+$/, '').replace(/\.$/, '')}s`;
+  if (item.skipped) return '待测';
+  if (/timeout|超时/i.test(item.error || '')) return '超时';
+  return '失败';
+}
+
+function renderMirrorList(results = []) {
+  const settings = updateOptions?.settings || {};
+  const measured = new Map(results.map((item) => [item.id, item]));
+  const current = currentMirrorId();
+  const sourceProxies = updateOptions?.proxies || [];
+  const proxyOrder = results.length
+    ? [
+        ...results
+          .map((item) => sourceProxies.find((proxy) => proxy.id === item.id))
+          .filter(Boolean),
+        ...sourceProxies.filter((proxy) => !measured.has(proxy.id))
+      ]
+    : sourceProxies;
+  const rows = proxyOrder.map((proxy, index) => {
+    const item = measured.get(proxy.id) || {
+      id: proxy.id,
+      label: proxy.label,
+      ok: false,
+      skipped: true,
+      elapsedMs: 0,
+      error: '待测'
+    };
+    const active = current === proxy.id ? ' active' : '';
+    const state = item.ok ? 'ok' : item.skipped ? 'idle' : 'fail';
+    return `
+      <div class="mirror-row${active}" data-proxy-id="${escapeHtml(proxy.id)}">
+        <span class="mirror-rank">${index + 1}</span>
+        <span class="mirror-name">${escapeHtml(proxy.label)}</span>
+        <span class="mirror-time ${state}">${escapeHtml(formatMirrorTime(item))}</span>
+        <button class="mirror-use secondary-btn" type="button" data-proxy-id="${escapeHtml(proxy.id)}">使用</button>
+      </div>
+    `;
+  }).join('');
+
+  const customRow = settings.customProxyUrl ? `
+    <div class="mirror-row${current === 'custom' ? ' active' : ''}" data-proxy-id="custom">
+      <span class="mirror-rank">*</span>
+      <span class="mirror-name">${escapeHtml(mirrorLabel('custom', settings.customProxyUrl))}</span>
+      <span class="mirror-time idle">自定义</span>
+      <button class="mirror-use secondary-btn" type="button" data-proxy-id="custom">使用</button>
+    </div>
+  ` : '';
+
+  els.mirrorList.innerHTML = customRow + rows;
+  els.mirrorList.querySelectorAll('.mirror-use').forEach((button) => {
+    button.addEventListener('click', () => useMirror(button.dataset.proxyId));
+  });
+}
+
+function renderUpdateInfo(info) {
+  updateInfo = info;
+  els.updateState.textContent = `当前版本：${info.currentVersion || '--'}`;
+  const latest = info.latestVersion || '--';
+  const proxy = info.proxyLabel || 'GitHub 直连';
+  if (info.hasUpdate) {
+    els.updateSummary.innerHTML = `发现新版本 <strong>v${escapeHtml(latest)}</strong> · ${escapeHtml(proxy)} · ${info.elapsedMs || '-'}ms · ${escapeHtml(info.asset?.sizeText || '')}`;
+    els.downloadUpdateBtn.disabled = !info.asset?.downloadUrl;
+  } else {
+    els.updateSummary.innerHTML = `已是最新版本 v${escapeHtml(info.currentVersion || latest)} · ${escapeHtml(proxy)} · ${info.elapsedMs || '-'}ms`;
+    els.downloadUpdateBtn.disabled = true;
+  }
+  els.releaseNotes.innerHTML = renderMarkdownLite(info.body);
+  if (info.speedTest) {
+    updateOptions.lastSpeedResults = info.speedTest.results || [];
+    renderMirrorList(updateOptions.lastSpeedResults);
+  }
+}
+
+async function saveUpdateSettings() {
+  if (!window.managerApi.saveUpdateSettings) return;
+  updateOptions.settings = await window.managerApi.saveUpdateSettings(updateOptions?.settings || {});
+  syncMirrorHeader();
+  renderMirrorList(updateOptions.lastSpeedResults || []);
+}
+
+async function useMirror(proxyId) {
+  if (!updateOptions) return;
+  if (proxyId === 'custom') {
+    if (!updateOptions.settings.customProxyUrl) {
+      setStatus('请先保存自定义镜像地址');
+      return;
+    }
+    updateOptions.settings.proxyMode = 'custom';
+  } else {
+    updateOptions.settings.proxyMode = 'manual';
+    updateOptions.settings.proxyId = proxyId;
+  }
+  await saveUpdateSettings();
+  setStatus(`当前镜像：${mirrorLabel(proxyId, updateOptions.settings.customProxyUrl)}`);
+}
+
+async function initUpdatePanel() {
+  if (!window.managerApi.getUpdateOptions) return;
+  updateOptions = await window.managerApi.getUpdateOptions();
+  els.updateState.textContent = `当前版本：${updateOptions.version}`;
+  updateOptions.lastSpeedResults = [];
+  syncMirrorHeader();
+  renderMirrorList();
 }
 
 function primaryPresetValue(provider) {
@@ -482,6 +649,115 @@ els.saveConfigBtn.addEventListener('click', async () => {
   }
 });
 
+els.saveMirrorBtn.addEventListener('click', async () => {
+  try {
+    const raw = els.mirrorUrl.value.trim();
+    if (!raw) {
+      setStatus('请先输入镜像地址');
+      return;
+    }
+    const url = raw.startsWith('http') ? raw : `https://${raw}`;
+    new URL(url);
+    updateOptions.settings.customProxyUrl = url.replace(/\/+$/, '');
+    updateOptions.settings.proxyMode = 'custom';
+    await saveUpdateSettings();
+    setStatus(`已保存自定义镜像：${mirrorLabel('custom', updateOptions.settings.customProxyUrl)}`);
+  } catch (error) {
+    setStatus(`镜像地址无效：${error.message}`);
+  }
+});
+
+els.clearMirrorBtn.addEventListener('click', async () => {
+  updateOptions.settings.customProxyUrl = '';
+  updateOptions.settings.proxyMode = 'auto';
+  updateOptions.settings.lastFastProxyId = '';
+  await saveUpdateSettings();
+  setStatus('已清除自定义镜像，恢复自动测速选择');
+});
+
+els.speedTestBtn.addEventListener('click', async () => {
+  try {
+    els.speedTestBtn.disabled = true;
+    els.speedTestBtn.textContent = '测速中...';
+    els.mirrorList.innerHTML = '<div class="mirror-empty">正在并发测试全部镜像，完成后按速度排序...</div>';
+    const result = await window.managerApi.speedTestUpdateProxies();
+    updateOptions.lastSpeedResults = result.results || [];
+    if (result.fastest) {
+      updateOptions.settings.lastFastProxyId = result.fastest.id;
+      if (updateOptions.settings.proxyMode === 'auto') updateOptions.settings.proxyId = result.fastest.id;
+      await saveUpdateSettings();
+      setStatus(`测速完成：${result.fastest.label} 最快`);
+    } else {
+      renderMirrorList(updateOptions.lastSpeedResults);
+      setStatus('测速完成：没有可用代理');
+    }
+  } catch (error) {
+    els.mirrorList.innerHTML = `<div class="test-summary fail">${escapeHtml(error.message)}</div>`;
+    setStatus(`测速失败：${error.message}`);
+  } finally {
+    els.speedTestBtn.disabled = false;
+    els.speedTestBtn.textContent = '测速';
+  }
+});
+
+els.checkUpdateBtn.addEventListener('click', async () => {
+  try {
+    await saveUpdateSettings();
+    els.checkUpdateBtn.disabled = true;
+    els.checkUpdateBtn.textContent = '检查中...';
+    els.updateSummary.textContent = '正在读取 GitHub Release...';
+    const result = await window.managerApi.checkUpdate(false);
+    renderUpdateInfo(result);
+    setStatus(result.hasUpdate ? `发现新版本 v${result.latestVersion}` : '已经是最新版本');
+  } catch (error) {
+    els.updateSummary.innerHTML = `<span class="error-text">检查更新失败：${escapeHtml(error.message)}</span>`;
+    els.releaseNotes.innerHTML = '<p>检查失败，稍后可以换一个代理再试。</p>';
+    setStatus(`检查更新失败：${error.message}`);
+  } finally {
+    els.checkUpdateBtn.disabled = false;
+    els.checkUpdateBtn.textContent = '检查更新';
+  }
+});
+
+els.downloadUpdateBtn.addEventListener('click', async () => {
+  if (!updateInfo?.asset?.downloadUrl) {
+    setStatus('没有可下载的更新安装包');
+    return;
+  }
+  try {
+    await saveUpdateSettings();
+    els.downloadUpdateBtn.disabled = true;
+    els.downloadUpdateBtn.textContent = '下载中...';
+    els.updateProgress.hidden = false;
+    els.updateProgressBar.style.width = '0%';
+    els.updateProgressText.textContent = '正在准备下载...';
+    const result = await window.managerApi.downloadUpdate(
+      updateInfo.asset.downloadUrl,
+      updateInfo.asset.name,
+      currentMirrorId() || updateInfo.proxyId
+    );
+    els.updateProgressBar.style.width = '100%';
+    els.updateProgressText.textContent = `已下载 ${result.bytesText}，安装器已启动`;
+    setStatus(`安装器已启动：${result.proxyLabel}`);
+  } catch (error) {
+    els.updateProgressText.textContent = `下载失败：${error.message}`;
+    setStatus(`下载更新失败：${error.message}`);
+    els.downloadUpdateBtn.disabled = false;
+  } finally {
+    els.downloadUpdateBtn.textContent = '下载并安装';
+  }
+});
+
+if (window.managerApi.onUpdateDownloadProgress) {
+  window.managerApi.onUpdateDownloadProgress((progress) => {
+    els.updateProgress.hidden = false;
+    const percent = progress.percent || 0;
+    els.updateProgressBar.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+    const total = progress.totalText ? ` / ${progress.totalText}` : '';
+    els.updateProgressText.textContent = `${progress.fileName} · ${progress.downloadedText}${total} · ${progress.proxyLabel}`;
+  });
+}
+
 for (const input of [
   els.preset,
   els.targetLang,
@@ -562,6 +838,7 @@ document.querySelectorAll('.preset-btn').forEach(btn => {
 
 (async function init() {
   els.ets2Path.value = await window.managerApi.detectPath(currentGame);
+  await initUpdatePanel();
   await refreshPresets();
   setFontSize(numberValue(els.fontSize, 18));
   setOverlayOpacity(numberValue(els.overlayOpacity, 98));

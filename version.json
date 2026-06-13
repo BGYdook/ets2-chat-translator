@@ -1,0 +1,10 @@
+{
+  "version": "0.3.5",
+  "tag_name": "v0.3.5",
+  "name": "v0.3.5",
+  "download_url": "https://github.com/Seven-TMP/ets2-chat-translator/releases/download/v0.3.5/ETS2-Chat-Translator-Manager-Setup-0.3.5.exe",
+  "asset_name": "ETS2-Chat-Translator-Manager-Setup-0.3.5.exe",
+  "size": 82681888,
+  "html_url": "https://github.com/Seven-TMP/ets2-chat-translator/releases/tag/v0.3.5",
+  "notes": "### v0.3.5\n\n- 管理器新增 GitHub Release 在线检查更新，支持显示 Release 更新日志。\n- 镜像选择改为列表面板，支持当前镜像、自定义 URL、完整并发测速排行和一键使用。\n- 内置 GitHub 代理列表，可自动测速选择最快节点，也可手动选择并保存。\n- 测速改为轻量 HEAD 请求检测全部镜像，2xx/3xx 和 405 视为可用。\n- 支持优先读取 version.json，失败时回退 GitHub Releases API。\n- 支持通过代理下载新版安装包，下载完成后直接启动安装器。\n- 百度翻译继续加固目标语言兼容，Provider 自带 target 也会参与规范化。\n- 百度 INVALID_TO_PARAM 等错误改为更清楚的中文说明。\n- README 新增 MiMo V2.5 / MiMo V2.5 Pro 推荐配置和注册链接。"
+}
