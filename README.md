@@ -103,7 +103,7 @@ graph TD
 ```
 
 1. **下载并运行安装包**：
-   双击运行 `build\installer\ETS2-Chat-Translator-Manager-Setup-0.3.15.exe` 进行安装。
+   双击运行 `build\installer\ETS2-Chat-Translator-Manager-Setup-0.3.16.exe` 进行安装。
 2. **打开管理器**：启动安装好的 `ETS2 Chat Translator Manager`。
 3. **识别游戏目录**：选择对应的游戏（ETS2 或 ATS），管理器会尝试自动定位。若未找到，可手动选择游戏主程序所在的 bin 目录。
 4. **一键部署 DLL**：点击 `安装 / 更新 DLL` 按钮。
@@ -281,7 +281,7 @@ build/
 ├── ets2_chat_translator_app/                       # 绿色版管理器 (绿色免安装)
 │   └── ETS2 Chat Translator Manager.exe
 └── installer/
-    └── ETS2-Chat-Translator-Manager-Setup-0.3.15.exe # 独立安装包 (集成 NSIS)
+    └── ETS2-Chat-Translator-Manager-Setup-0.3.16.exe # 独立安装包 (集成 NSIS)
 ```
 
 ---
@@ -335,6 +335,12 @@ build/
 ---
 
 ## 🧾 历史版本更新
+
+### 🚀 v0.3.16
+* **🧩 聊天短句误翻修复**：`goo` 等 2-3 字母噪音不再误翻成问候，`o////` 这类挥手/装饰符号会直接原样显示。
+* **🏷️ @ 提及保留**：模型漏掉 `@玩家名 (临时编号)` 时会自动补回，避免翻译后丢失被提及对象。
+* **😄 表情后处理收紧**：`:)`、`:d`、`<3` 不再把整句未翻译英文伪装成成功翻译。
+* **🚫 ban 句尾误拆修复**：`enjoy your ban` 这类普通句子不再被本地规则拆成半英文半中文。
 
 ### 🚀 v0.3.15
 * **🧯 修复“翻译中...”卡住**：用户名/噪音、无需翻译、队列满或 Provider 最终失败时都会回填原文或失败提示，不再永久停留在占位状态。

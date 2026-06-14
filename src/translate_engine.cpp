@@ -57,6 +57,15 @@ bool HasChinese(const std::wstring& value)
     return false;
 }
 
+int ChineseCharCount(const std::wstring& value)
+{
+    int count = 0;
+    for (wchar_t ch : value) {
+        if (ch >= 0x4E00 && ch <= 0x9FFF) ++count;
+    }
+    return count;
+}
+
 std::wstring LowerAscii(std::wstring value)
 {
     std::transform(value.begin(), value.end(), value.begin(), [](wchar_t ch) {
@@ -109,6 +118,118 @@ std::wstring CompareKey(const std::wstring& value)
     return out;
 }
 
+std::vector<std::wstring> AlphaWords(const std::wstring& value)
+{
+    std::vector<std::wstring> words;
+    std::wstring token;
+    for (wchar_t ch : LowerAscii(value)) {
+        if ((ch >= L'a' && ch <= L'z') || iswalpha(ch)) {
+            token.push_back(ch);
+            continue;
+        }
+        if (token.size() >= 2) words.push_back(token);
+        token.clear();
+    }
+    if (token.size() >= 2) words.push_back(token);
+    return words;
+}
+
+bool ContainsWord(const std::wstring& value, const std::wstring& word)
+{
+    if (word.empty()) return false;
+    std::wstring lower = LowerAscii(value);
+    for (size_t pos = lower.find(word); pos != std::wstring::npos; pos = lower.find(word, pos + 1)) {
+        bool leftOk = pos == 0 || !iswalnum(lower[pos - 1]);
+        size_t end = pos + word.size();
+        bool rightOk = end >= lower.size() || !iswalnum(lower[end]);
+        if (leftOk && rightOk) return true;
+    }
+    return false;
+}
+
+bool LeavesTooMuchSourceText(const std::wstring& input, const std::wstring& output)
+{
+    std::vector<std::wstring> sourceWords = AlphaWords(input);
+    if (sourceWords.size() < 2) return false;
+
+    int retained = 0;
+    for (const auto& word : sourceWords) {
+        if (ContainsWord(output, word)) ++retained;
+    }
+
+    int chinese = ChineseCharCount(output);
+    if (sourceWords.size() >= 3 && retained >= (std::max)(2, (int)sourceWords.size() / 2)) return true;
+    return retained >= 2 && chinese <= 4;
+}
+
+bool StartsWithMentionPrefix(const std::wstring& value, std::wstring& prefix)
+{
+    std::wstring trimmed = text::Trim(value);
+    if (trimmed.empty() || trimmed[0] != L'@') return false;
+
+    size_t i = 1;
+    while (i < trimmed.size() && !iswspace(trimmed[i])) ++i;
+    if (i <= 1) return false;
+
+    size_t end = i;
+    size_t p = i;
+    while (p < trimmed.size() && iswspace(trimmed[p])) ++p;
+    if (p < trimmed.size() && trimmed[p] == L'(') {
+        size_t close = trimmed.find(L')', p + 1);
+        if (close != std::wstring::npos) {
+            bool digits = close > p + 1;
+            for (size_t k = p + 1; k < close; ++k) {
+                if (!iswdigit(trimmed[k])) {
+                    digits = false;
+                    break;
+                }
+            }
+            if (digits) end = close + 1;
+        }
+    }
+
+    prefix = trimmed.substr(0, end);
+    return true;
+}
+
+std::wstring PreserveMentionPrefix(const std::wstring& input, const std::wstring& output)
+{
+    std::wstring prefix;
+    if (!StartsWithMentionPrefix(input, prefix)) return output;
+    if (output.find(prefix) != std::wstring::npos) return output;
+
+    std::wstring mentionName = prefix;
+    size_t space = mentionName.find(L' ');
+    if (space != std::wstring::npos) mentionName = mentionName.substr(0, space);
+
+    std::wstring bareName = mentionName;
+    if (!bareName.empty() && bareName.front() == L'@') bareName.erase(bareName.begin());
+    std::wstring trimmedOut = text::Trim(output);
+    auto startsWithNoCase = [](const std::wstring& value, const std::wstring& needle) {
+        return !needle.empty()
+            && value.size() >= needle.size()
+            && LowerAscii(value.substr(0, needle.size())) == LowerAscii(needle);
+    };
+    auto trimAfterLeadingName = [&](const std::wstring& name) -> std::wstring {
+        if (!startsWithNoCase(trimmedOut, name)) return L"";
+        std::wstring rest = text::Trim(trimmedOut.substr(name.size()));
+        if (!rest.empty() && rest.front() == L'(') {
+            size_t close = rest.find(L')');
+            if (close != std::wstring::npos) rest = text::Trim(rest.substr(close + 1));
+        }
+        while (!rest.empty() && (rest.front() == L':' || rest.front() == L',' || rest.front() == L'-')) {
+            rest = text::Trim(rest.substr(1));
+        }
+        return rest;
+    };
+
+    std::wstring rest = trimAfterLeadingName(mentionName);
+    if (rest.empty()) rest = trimAfterLeadingName(bareName);
+    if (!rest.empty()) return prefix + L" " + rest;
+
+    return prefix + L" " + text::Trim(output);
+}
+
 bool LooksUntranslated(const std::wstring& input, const std::wstring& output, const RuntimeConfig& runtime)
 {
     std::wstring out = text::Trim(output);
@@ -118,6 +239,10 @@ bool LooksUntranslated(const std::wstring& input, const std::wstring& output, co
         && !HasChinese(out)) {
         // 如果输出没有中文但包含的文本和输入完全不同，可能是其他语言的意译
         // 仍判定为失败 — 目标就是中文
+        return true;
+    }
+    if ((runtime.targetLanguage == L"zh-CN" || runtime.targetLanguage == L"zh" || runtime.targetLanguage == L"zh-Hans")
+        && LeavesTooMuchSourceText(input, out)) {
         return true;
     }
     return false;
@@ -165,6 +290,33 @@ bool IsNonTranslatableChatText(const std::wstring& text)
     if (value.empty()) return true;
     if (!HasTranslatableSignal(value)) return true;
     return false;
+}
+
+bool LooksLikeGestureOnly(const std::wstring& text)
+{
+    std::wstring value = text::Trim(text);
+    if (value.empty()) return true;
+
+    bool hasO = false;
+    bool hasGestureMark = false;
+    int letters = 0;
+    for (wchar_t ch : value) {
+        wchar_t lower = (wchar_t)towlower(ch);
+        if (lower == L'o') {
+            hasO = true;
+            ++letters;
+            continue;
+        }
+        if (iswalpha(ch)) return false;
+        if (ch == L'/' || ch == L'\\' || ch == L'|' || ch == L'_' || ch == L'-' ||
+            ch == L'(' || ch == L')' || ch == L'[' || ch == L']' || ch == L' ' ||
+            ch == L'.' || ch == L',' || ch == L'!' || ch == L'~') {
+            if (ch == L'/' || ch == L'\\' || ch == L'|') hasGestureMark = true;
+            continue;
+        }
+        return false;
+    }
+    return hasO && hasGestureMark && letters <= 3;
 }
 
 std::wstring TrimChatEdgePunctuation(std::wstring value)
@@ -406,6 +558,12 @@ bool NeedsPauseAfterToken(wchar_t next)
     return true;
 }
 
+bool IsTrailingEmojiToken(const std::wstring& token)
+{
+    std::wstring key = NormalizeChatForDictionary(token);
+    return key == L":)" || key == L":(" || key == L":d" || key == L"<3";
+}
+
 std::wstring FixProviderLeftoverShorthand(const std::wstring& value)
 {
     if (value.empty()) return value;
@@ -561,6 +719,11 @@ std::wstring ShortPhraseFallback(const std::wstring& input)
     }
 
     std::vector<std::wstring> words = SplitWords(lower);
+    if (words.size() == 1) {
+        std::wstring translated = exactLookup(words[0]);
+        if (!translated.empty() && !IsTrailingEmojiToken(words[0])) return translated;
+    }
+
     for (size_t start = 0; start < words.size() && start <= 2; ++start) {
         std::wstring structured = StructuredTruckersPhrase(words, start);
         if (structured.empty()) continue;
@@ -611,19 +774,24 @@ std::wstring ShortPhraseFallback(const std::wstring& input)
     }
 
     for (const auto& item : exact) {
-        if (lower == item.key || edgeTrimmed == item.key) return item.value;
+        if ((lower == item.key || edgeTrimmed == item.key) && !IsTrailingEmojiToken(item.key)) return item.value;
     }
 
     std::vector<std::wstring> tokenTranslations;
+    bool allSafeTokens = !words.empty() && words.size() <= 5;
     for (const auto& word : words) {
+        if (IsTrailingEmojiToken(word)) {
+            allSafeTokens = false;
+            break;
+        }
         std::wstring translated = exactLookup(word);
         if (translated.empty()) {
-            tokenTranslations.clear();
+            allSafeTokens = false;
             break;
         }
         tokenTranslations.push_back(translated);
     }
-    if (tokenTranslations.size() >= 1 && tokenTranslations.size() <= 5) {
+    if (allSafeTokens) {
         std::wstring out;
         for (const auto& translated : tokenTranslations) {
             if (!out.empty()) out += L"，";
@@ -640,7 +808,7 @@ std::wstring ShortPhraseFallback(const std::wstring& input)
     }
 
     for (const auto& item : exact) {
-        if (EndsWithWord(trailingTrimmed, item.key, prefix)) {
+        if (!IsTrailingEmojiToken(item.key) && EndsWithWord(trailingTrimmed, item.key, prefix)) {
             size_t keep = input.size() - (lower.size() - prefix.size());
             return text::Trim(input.substr(0, keep)) + L" " + item.value;
         }
@@ -656,7 +824,7 @@ std::wstring ShortPhraseFallback(const std::wstring& input)
         { L"kick", L"踢出" }
     };
     for (const auto& item : suffixActions) {
-        if (EndsWithWord(trailingTrimmed, item.key, prefix) && !prefix.empty()) {
+        if (EndsWithWord(trailingTrimmed, item.key, prefix) && !prefix.empty() && SplitWords(prefix).size() <= 2) {
             size_t keep = input.size() - (lower.size() - prefix.size());
             return text::Trim(input.substr(0, keep)) + L" " + item.value;
         }
@@ -676,6 +844,15 @@ bool LooksLikeSingleNameOrNoise(const std::wstring& input)
     std::wstring translated;
     bool pauseAfter = false;
     if (ProviderLeftoverToken(value, translated, pauseAfter)) return false;
+
+    bool asciiLettersOnly = true;
+    for (wchar_t ch : value) {
+        if (ch < L'a' || ch > L'z') {
+            asciiLettersOnly = false;
+            break;
+        }
+    }
+    if (asciiLettersOnly && value.size() <= 3) return true;
 
     return IsIdOrNameToken(value);
 }
@@ -2111,7 +2288,7 @@ void TranslateEngine::Submit(unsigned int id, const std::wstring& value)
         return;
     }
 
-    if (IsNonTranslatableChatText(value) || text::MostlyChinese(value)) {
+    if (LooksLikeGestureOnly(value) || IsNonTranslatableChatText(value) || text::MostlyChinese(value)) {
         LogLine(L"[Translate] \"" + value + L"\" -> skip: non-translatable");
         if (done_) done_(id, value);
         return;
@@ -2266,7 +2443,7 @@ std::wstring TranslateEngine::RunProviders(const std::wstring& value, HttpAgent&
         if (found != cache_.end()) return found->second;
     }
 
-    if (IsNonTranslatableChatText(value) || text::MostlyChinese(value)) {
+    if (LooksLikeGestureOnly(value) || IsNonTranslatableChatText(value) || text::MostlyChinese(value)) {
         LogLine(L"[Translate] \"" + value + L"\" -> 跳过(无需翻译)");
         return L"";
     }
@@ -2331,6 +2508,11 @@ std::wstring TranslateEngine::RunProviders(const std::wstring& value, HttpAgent&
             if (fixed != out) {
                 LogLine(L"[Translate] \"" + value + L"\" shorthand fix: " + out + L" -> " + fixed);
                 out = std::move(fixed);
+            }
+            std::wstring preserved = PreserveMentionPrefix(value, out);
+            if (preserved != out) {
+                LogLine(L"[Translate] \"" + value + L"\" mention fix: " + out + L" -> " + preserved);
+                out = std::move(preserved);
             }
         }
 
@@ -2470,6 +2652,6 @@ bool TranslateEngine::ShouldTranslate(const std::wstring& text)
     std::wstring value = text::Trim(text);
     if (value.empty()) return false;
     if (!ShortPhraseFallback(value).empty()) return true;
-    if (IsNonTranslatableChatText(value)) return false;
+    if (LooksLikeGestureOnly(value) || IsNonTranslatableChatText(value)) return false;
     return !text::MostlyChinese(value);
 }
