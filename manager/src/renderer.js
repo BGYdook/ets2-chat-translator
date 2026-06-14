@@ -42,25 +42,30 @@ const els = {
   testResult: document.querySelector('#testResult'),
   preview: document.querySelector('#preview'),
   updateState: document.querySelector('#updateState'),
-  currentMirror: document.querySelector('#currentMirror'),
   mirrorUrl: document.querySelector('#mirrorUrl'),
   saveMirrorBtn: document.querySelector('#saveMirrorBtn'),
   clearMirrorBtn: document.querySelector('#clearMirrorBtn'),
   mirrorList: document.querySelector('#mirrorList'),
   speedTestBtn: document.querySelector('#speedTestBtn'),
   checkUpdateBtn: document.querySelector('#checkUpdateBtn'),
+  useDirectBtn: document.querySelector('#useDirectBtn'),
+  useSelectedMirrorBtn: document.querySelector('#useSelectedMirrorBtn'),
   downloadUpdateBtn: document.querySelector('#downloadUpdateBtn'),
   updateSummary: document.querySelector('#updateSummary'),
   updateProgress: document.querySelector('#updateProgress'),
   updateProgressBar: document.querySelector('#updateProgressBar'),
   updateProgressText: document.querySelector('#updateProgressText'),
-  releaseNotes: document.querySelector('#releaseNotes')
+  releaseNotes: document.querySelector('#releaseNotes'),
+  mirrorSelectArea: document.querySelector('#mirrorSelectArea'),
+  updateResult: document.querySelector('#updateResult'),
+  updatePlaceholder: document.querySelector('#updatePlaceholder')
 };
 
 let currentGame = 'ets2';
 let configPresets = [];
 let updateInfo = null;
 let updateOptions = null;
+let selectedMirrorId = null; // mirror user selected from the list
 const GAME_LABELS = {
   ets2: 'ETS2',
   ats: 'ATS'
@@ -241,10 +246,10 @@ function setStatus(text) {
 
 function escapeHtml(value) {
   return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
+    .replace(/&/g, '&')
+    .replace(/</g, '<')
+    .replace(/>/g, '>')
+    .replace(/"/g, '"')
     .replace(/'/g, '&#39;');
 }
 
@@ -301,22 +306,6 @@ function mirrorLabel(id, customUrl = '') {
   return proxy?.label || '自动测速选择';
 }
 
-function currentMirrorId() {
-  const settings = updateOptions?.settings || {};
-  if (settings.proxyMode === 'custom' && settings.customProxyUrl) return 'custom';
-  if (settings.proxyMode === 'manual') return settings.proxyId || '';
-  return settings.lastFastProxyId || '';
-}
-
-function syncMirrorHeader() {
-  const settings = updateOptions?.settings || {};
-  const id = currentMirrorId();
-  els.currentMirror.textContent = settings.proxyMode === 'auto' && !settings.lastFastProxyId
-    ? '自动测速选择'
-    : mirrorLabel(id, settings.customProxyUrl);
-  els.mirrorUrl.value = settings.customProxyUrl || (id && id !== 'direct' ? `https://${id}/` : '');
-}
-
 function formatMirrorTime(item) {
   if (item.ok) return `${(item.elapsedMs / 1000).toFixed(item.elapsedMs >= 1000 ? 3 : 2).replace(/0+$/, '').replace(/\.$/, '')}s`;
   if (item.skipped) return '待测';
@@ -327,7 +316,6 @@ function formatMirrorTime(item) {
 function renderMirrorList(results = []) {
   const settings = updateOptions?.settings || {};
   const measured = new Map(results.map((item) => [item.id, item]));
-  const current = currentMirrorId();
   const sourceProxies = updateOptions?.proxies || [];
   const proxyOrder = results.length
     ? [
@@ -337,6 +325,8 @@ function renderMirrorList(results = []) {
         ...sourceProxies.filter((proxy) => !measured.has(proxy.id))
       ]
     : sourceProxies;
+
+  // Build rows with speed results (if any) and mirror use buttons
   const rows = proxyOrder.map((proxy, index) => {
     const item = measured.get(proxy.id) || {
       id: proxy.id,
@@ -346,31 +336,72 @@ function renderMirrorList(results = []) {
       elapsedMs: 0,
       error: '待测'
     };
-    const active = current === proxy.id ? ' active' : '';
+    const selClass = selectedMirrorId === proxy.id ? ' selected' : '';
     const state = item.ok ? 'ok' : item.skipped ? 'idle' : 'fail';
     return `
-      <div class="mirror-row${active}" data-proxy-id="${escapeHtml(proxy.id)}">
+      <div class="mirror-row${selClass}" data-proxy-id="${escapeHtml(proxy.id)}">
         <span class="mirror-rank">${index + 1}</span>
         <span class="mirror-name">${escapeHtml(proxy.label)}</span>
         <span class="mirror-time ${state}">${escapeHtml(formatMirrorTime(item))}</span>
-        <button class="mirror-use secondary-btn" type="button" data-proxy-id="${escapeHtml(proxy.id)}">使用</button>
+        <button class="mirror-use-btn secondary-btn" type="button" data-proxy-id="${escapeHtml(proxy.id)}">选择</button>
       </div>
     `;
   }).join('');
 
-  const customRow = settings.customProxyUrl ? `
-    <div class="mirror-row${current === 'custom' ? ' active' : ''}" data-proxy-id="custom">
+  // Custom proxy row
+  const customUrl = settings.customProxyUrl;
+  const customRow = customUrl ? `
+    <div class="mirror-row${selectedMirrorId === 'custom' ? ' selected' : ''}" data-proxy-id="custom">
       <span class="mirror-rank">*</span>
-      <span class="mirror-name">${escapeHtml(mirrorLabel('custom', settings.customProxyUrl))}</span>
+      <span class="mirror-name">${escapeHtml(mirrorLabel('custom', customUrl))}</span>
       <span class="mirror-time idle">自定义</span>
-      <button class="mirror-use secondary-btn" type="button" data-proxy-id="custom">使用</button>
+      <button class="mirror-use-btn secondary-btn" type="button" data-proxy-id="custom">选择</button>
     </div>
   ` : '';
 
   els.mirrorList.innerHTML = customRow + rows;
-  els.mirrorList.querySelectorAll('.mirror-use').forEach((button) => {
-    button.addEventListener('click', () => useMirror(button.dataset.proxyId));
+
+  // Click on row selects it
+  els.mirrorList.querySelectorAll('.mirror-row').forEach((row) => {
+    row.addEventListener('click', () => {
+      selectMirror(row.dataset.proxyId);
+    });
   });
+
+  // Click on "选择" button also selects
+  els.mirrorList.querySelectorAll('.mirror-use-btn').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      selectMirror(btn.dataset.proxyId);
+    });
+  });
+}
+
+function selectMirror(proxyId) {
+  selectedMirrorId = proxyId;
+  // Update visual
+  els.mirrorList.querySelectorAll('.mirror-row').forEach((row) => {
+    row.classList.toggle('selected', row.dataset.proxyId === proxyId);
+  });
+  setStatus(`已选择镜像：${mirrorLabel(proxyId, updateOptions?.settings?.customProxyUrl)}`);
+}
+
+// Show mirror selection area, hide placeholder and previous results
+function showMirrorSelection() {
+  els.mirrorSelectArea.style.display = '';
+  els.updateResult.style.display = 'none';
+  els.updatePlaceholder.style.display = 'none';
+  els.updateProgress.hidden = true;
+  els.downloadUpdateBtn.disabled = true;
+  selectedMirrorId = null;
+  renderMirrorList(updateOptions?.lastSpeedResults || []);
+}
+
+// Show update check result
+function showUpdateResult() {
+  els.mirrorSelectArea.style.display = 'none';
+  els.updateResult.style.display = '';
+  els.updatePlaceholder.style.display = 'none';
 }
 
 function renderUpdateInfo(info) {
@@ -386,33 +417,17 @@ function renderUpdateInfo(info) {
     els.downloadUpdateBtn.disabled = true;
   }
   els.releaseNotes.innerHTML = renderMarkdownLite(info.body);
+  showUpdateResult();
+
+  // If speed test results were returned, cache them for mirror list
   if (info.speedTest) {
     updateOptions.lastSpeedResults = info.speedTest.results || [];
-    renderMirrorList(updateOptions.lastSpeedResults);
   }
 }
 
 async function saveUpdateSettings() {
   if (!window.managerApi.saveUpdateSettings) return;
   updateOptions.settings = await window.managerApi.saveUpdateSettings(updateOptions?.settings || {});
-  syncMirrorHeader();
-  renderMirrorList(updateOptions.lastSpeedResults || []);
-}
-
-async function useMirror(proxyId) {
-  if (!updateOptions) return;
-  if (proxyId === 'custom') {
-    if (!updateOptions.settings.customProxyUrl) {
-      setStatus('请先保存自定义镜像地址');
-      return;
-    }
-    updateOptions.settings.proxyMode = 'custom';
-  } else {
-    updateOptions.settings.proxyMode = 'manual';
-    updateOptions.settings.proxyId = proxyId;
-  }
-  await saveUpdateSettings();
-  setStatus(`当前镜像：${mirrorLabel(proxyId, updateOptions.settings.customProxyUrl)}`);
 }
 
 async function initUpdatePanel() {
@@ -420,8 +435,6 @@ async function initUpdatePanel() {
   updateOptions = await window.managerApi.getUpdateOptions();
   els.updateState.textContent = `当前版本：${updateOptions.version}`;
   updateOptions.lastSpeedResults = [];
-  syncMirrorHeader();
-  renderMirrorList();
 }
 
 function primaryPresetValue(provider) {
@@ -532,6 +545,7 @@ async function loadInstalledConfig(silent = false) {
   }
 }
 
+/* ==================== Install Panel ==================== */
 els.detectBtn.addEventListener('click', async () => {
   els.ets2Path.value = await window.managerApi.detectPath(currentGame);
   setStatus(els.ets2Path.value ? `已自动识别 ${GAME_LABELS[currentGame]} 路径` : '未能自动识别，请手动选择');
@@ -568,6 +582,7 @@ els.uninstallBtn.addEventListener('click', async () => {
   }
 });
 
+/* ==================== Config Panel ==================== */
 els.loadConfigBtn.addEventListener('click', () => loadInstalledConfig(false));
 els.previewBtn.addEventListener('click', updatePreview);
 
@@ -649,6 +664,112 @@ els.saveConfigBtn.addEventListener('click', async () => {
   }
 });
 
+/* ==================== Update Panel ==================== */
+
+// "检查更新" button → show mirror selection
+els.checkUpdateBtn.addEventListener('click', async () => {
+  showMirrorSelection();
+  setStatus('请选择一个镜像源来检查更新');
+});
+
+// "直连检查" button → check update directly without proxy
+els.useDirectBtn.addEventListener('click', async () => {
+  try {
+    selectMirror('direct');
+    const settings = updateOptions?.settings || {};
+    settings.proxyMode = 'manual';
+    settings.proxyId = 'direct';
+    await saveUpdateSettings();
+
+    els.useDirectBtn.disabled = true;
+    els.speedTestBtn.disabled = true;
+    els.useSelectedMirrorBtn.disabled = true;
+    els.useDirectBtn.textContent = '检查中...';
+    setStatus('正在使用 GitHub 直连检查更新...');
+    els.updateSummary.textContent = '正在读取 GitHub Release...';
+
+    const result = await window.managerApi.checkUpdate(false);
+    renderUpdateInfo(result);
+    setStatus(result.hasUpdate ? `发现新版本 v${result.latestVersion}` : '已经是最新版本');
+  } catch (error) {
+    els.updateSummary.innerHTML = `<span class="error-text">检查更新失败：${escapeHtml(error.message)}</span>`;
+    els.releaseNotes.innerHTML = '<p>直连检查失败，可以尝试使用镜像源。</p>';
+    showUpdateResult();
+    setStatus(`检查更新失败：${error.message}`);
+  } finally {
+    els.useDirectBtn.disabled = false;
+    els.speedTestBtn.disabled = false;
+    els.useSelectedMirrorBtn.disabled = false;
+    els.useDirectBtn.textContent = '直连检查（不用代理）';
+  }
+});
+
+// Speed test button
+els.speedTestBtn.addEventListener('click', async () => {
+  try {
+    els.speedTestBtn.disabled = true;
+    els.speedTestBtn.textContent = '测速中...';
+    els.mirrorList.innerHTML = '<div class="mirror-empty">正在并发测试全部镜像，完成后按速度排序...</div>';
+    const result = await window.managerApi.speedTestUpdateProxies();
+    updateOptions.lastSpeedResults = result.results || [];
+    if (result.fastest) {
+      // Auto-select fastest
+      selectedMirrorId = result.fastest.id;
+    }
+    renderMirrorList(updateOptions.lastSpeedResults);
+    setStatus(result.fastest
+      ? `测速完成：${result.fastest.label} 最快（已自动选中）`
+      : '测速完成：没有可用代理');
+  } catch (error) {
+    els.mirrorList.innerHTML = `<div class="test-summary fail">${escapeHtml(error.message)}</div>`;
+    setStatus(`测速失败：${error.message}`);
+  } finally {
+    els.speedTestBtn.disabled = false;
+    els.speedTestBtn.textContent = '测速';
+  }
+});
+
+// "使用选中镜像检查" button → actually check update
+els.useSelectedMirrorBtn.addEventListener('click', async () => {
+  if (!selectedMirrorId) {
+    setStatus('请先在下方选择一个镜像源或点击测速');
+    return;
+  }
+  try {
+    // Save selected mirror as the current proxy
+    const settings = updateOptions?.settings || {};
+    if (selectedMirrorId === 'custom') {
+      if (!settings.customProxyUrl) {
+        setStatus('请先添加自定义镜像地址');
+        return;
+      }
+      settings.proxyMode = 'custom';
+    } else {
+      settings.proxyMode = 'manual';
+      settings.proxyId = selectedMirrorId;
+    }
+    await saveUpdateSettings();
+
+    els.useSelectedMirrorBtn.disabled = true;
+    els.useSelectedMirrorBtn.textContent = '检查中...';
+    setStatus(`正在使用 ${mirrorLabel(selectedMirrorId, settings.customProxyUrl)} 检查更新...`);
+    els.updateSummary.textContent = '正在读取 GitHub Release...';
+
+    const result = await window.managerApi.checkUpdate(false);
+    renderUpdateInfo(result);
+    setStatus(result.hasUpdate ? `发现新版本 v${result.latestVersion}` : '已经是最新版本');
+  } catch (error) {
+    els.updateSummary.innerHTML = `<span class="error-text">检查更新失败：${escapeHtml(error.message)}</span>`;
+    els.releaseNotes.innerHTML = '<p>检查失败，稍后可以换一个代理再试。</p>';
+    showUpdateResult();
+    setStatus(`检查更新失败：${error.message}`);
+  } finally {
+    els.useSelectedMirrorBtn.disabled = false;
+    els.useSelectedMirrorBtn.textContent = '使用选中镜像检查';
+  }
+});
+
+// Save custom mirror
 els.saveMirrorBtn.addEventListener('click', async () => {
   try {
     const raw = els.mirrorUrl.value.trim();
@@ -659,66 +780,27 @@ els.saveMirrorBtn.addEventListener('click', async () => {
     const url = raw.startsWith('http') ? raw : `https://${raw}`;
     new URL(url);
     updateOptions.settings.customProxyUrl = url.replace(/\/+$/, '');
-    updateOptions.settings.proxyMode = 'custom';
     await saveUpdateSettings();
+    selectMirror('custom');
+    renderMirrorList(updateOptions.lastSpeedResults || []);
     setStatus(`已保存自定义镜像：${mirrorLabel('custom', updateOptions.settings.customProxyUrl)}`);
   } catch (error) {
     setStatus(`镜像地址无效：${error.message}`);
   }
 });
 
+// Clear custom mirror
 els.clearMirrorBtn.addEventListener('click', async () => {
   updateOptions.settings.customProxyUrl = '';
   updateOptions.settings.proxyMode = 'auto';
-  updateOptions.settings.lastFastProxyId = '';
+  updateOptions.settings.proxyId = '';
   await saveUpdateSettings();
-  setStatus('已清除自定义镜像，恢复自动测速选择');
+  selectedMirrorId = null;
+  renderMirrorList(updateOptions.lastSpeedResults || []);
+  setStatus('已清除自定义镜像');
 });
 
-els.speedTestBtn.addEventListener('click', async () => {
-  try {
-    els.speedTestBtn.disabled = true;
-    els.speedTestBtn.textContent = '测速中...';
-    els.mirrorList.innerHTML = '<div class="mirror-empty">正在并发测试全部镜像，完成后按速度排序...</div>';
-    const result = await window.managerApi.speedTestUpdateProxies();
-    updateOptions.lastSpeedResults = result.results || [];
-    if (result.fastest) {
-      updateOptions.settings.lastFastProxyId = result.fastest.id;
-      if (updateOptions.settings.proxyMode === 'auto') updateOptions.settings.proxyId = result.fastest.id;
-      await saveUpdateSettings();
-      setStatus(`测速完成：${result.fastest.label} 最快`);
-    } else {
-      renderMirrorList(updateOptions.lastSpeedResults);
-      setStatus('测速完成：没有可用代理');
-    }
-  } catch (error) {
-    els.mirrorList.innerHTML = `<div class="test-summary fail">${escapeHtml(error.message)}</div>`;
-    setStatus(`测速失败：${error.message}`);
-  } finally {
-    els.speedTestBtn.disabled = false;
-    els.speedTestBtn.textContent = '测速';
-  }
-});
-
-els.checkUpdateBtn.addEventListener('click', async () => {
-  try {
-    await saveUpdateSettings();
-    els.checkUpdateBtn.disabled = true;
-    els.checkUpdateBtn.textContent = '检查中...';
-    els.updateSummary.textContent = '正在读取 GitHub Release...';
-    const result = await window.managerApi.checkUpdate(false);
-    renderUpdateInfo(result);
-    setStatus(result.hasUpdate ? `发现新版本 v${result.latestVersion}` : '已经是最新版本');
-  } catch (error) {
-    els.updateSummary.innerHTML = `<span class="error-text">检查更新失败：${escapeHtml(error.message)}</span>`;
-    els.releaseNotes.innerHTML = '<p>检查失败，稍后可以换一个代理再试。</p>';
-    setStatus(`检查更新失败：${error.message}`);
-  } finally {
-    els.checkUpdateBtn.disabled = false;
-    els.checkUpdateBtn.textContent = '检查更新';
-  }
-});
-
+// Download update
 els.downloadUpdateBtn.addEventListener('click', async () => {
   if (!updateInfo?.asset?.downloadUrl) {
     setStatus('没有可下载的更新安装包');
@@ -731,10 +813,12 @@ els.downloadUpdateBtn.addEventListener('click', async () => {
     els.updateProgress.hidden = false;
     els.updateProgressBar.style.width = '0%';
     els.updateProgressText.textContent = '正在准备下载...';
+
+    const proxyId = selectedMirrorId || updateInfo.proxyId || '';
     const result = await window.managerApi.downloadUpdate(
       updateInfo.asset.downloadUrl,
       updateInfo.asset.name,
-      currentMirrorId() || updateInfo.proxyId
+      proxyId
     );
     els.updateProgressBar.style.width = '100%';
     els.updateProgressText.textContent = `已下载 ${result.bytesText}，安装器已启动`;
@@ -758,6 +842,7 @@ if (window.managerApi.onUpdateDownloadProgress) {
   });
 }
 
+/* ==================== Global Input Listeners ==================== */
 for (const input of [
   els.preset,
   els.targetLang,
@@ -796,7 +881,7 @@ document.querySelectorAll('.game-tab').forEach((tab) => {
   });
 });
 
-// --- 字体大小控件 ---
+/* ==================== Font Size Control ==================== */
 function setFontSize(size) {
   size = Math.max(12, Math.min(28, size));
   els.fontSize.value = size;
@@ -804,7 +889,6 @@ function setFontSize(size) {
   if (els.fontPreview) {
     els.fontPreview.style.fontSize = `${size}px`;
   }
-  // 高亮对应预设按钮
   document.querySelectorAll('.preset-btn').forEach(btn => {
     btn.classList.toggle('active', Number(btn.dataset.size) === size);
   });
@@ -856,6 +940,7 @@ if (copyPreviewBtn) {
   });
 }
 
+/* ==================== Init ==================== */
 (async function init() {
   els.ets2Path.value = await window.managerApi.detectPath(currentGame);
   await initUpdatePanel();

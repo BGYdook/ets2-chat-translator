@@ -144,31 +144,41 @@
     <div class="background-effects">
       <div class="glow glow-1"></div>
       <div class="glow glow-2"></div>
-      <div class="glow glow-3"></div>
     </div>
     
     <main class="shell">
-      <header class="topbar glass-panel">
+      <header class="topbar">
         <div class="header-content">
-          <h1>TMP <span class="accent">聊天翻译</span></h1>
-          <p>安装插件 DLL，管理翻译配置。</p>
+          <div class="logo">
+            <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>
+          </div>
+          <div class="header-text">
+            <h1>TMP <span class="accent">聊天翻译</span></h1>
+            <p>ETS2 / ATS 多语言聊天翻译管理器</p>
+          </div>
         </div>
         <div id="statusPill" class="pill">准备就绪</div>
       </header>
 
-      <section class="panel glass-panel install-panel">
+      <section class="panel install-panel">
         <div class="section-title">
           <div class="title-with-icon">
             <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>
-              <h2>游戏路径与安装</h2>
+            <h2>游戏路径与安装</h2>
           </div>
           <span id="installState" class="status-badge">正在检查...</span>
         </div>
         <div class="install-layout">
           <div class="install-game">
             <div class="game-switch">
-              <button type="button" class="game-tab active" data-game="ets2">ETS2</button>
-              <button type="button" class="game-tab" data-game="ats">ATS</button>
+              <button type="button" class="game-tab active" data-game="ets2">
+                <svg class="game-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
+                ETS2
+              </button>
+              <button type="button" class="game-tab" data-game="ats">
+                <svg class="game-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
+                ATS
+              </button>
             </div>
           </div>
           <div class="install-main">
@@ -185,239 +195,263 @@
             <div id="pluginDir" class="hint"></div>
           </div>
           <div class="actions main-actions">
-            <button id="installBtn" class="primary-btn pulse-hover">安装 / 更新 DLL</button>
+            <button id="installBtn" class="primary-btn">安装 / 更新 DLL</button>
             <button id="uninstallBtn" class="danger-btn">卸载 DLL</button>
           </div>
         </div>
       </section>
 
-      <section class="panel glass-panel update-panel">
+      <!-- ==================== 翻译配置 ==================== -->
+      <div class="config-layout">
+        <div class="config-main">
+          <div class="panel form-section">
+            <div class="section-title">
+              <div class="title-with-icon">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                <h2>翻译配置</h2>
+              </div>
+              <span class="sub-text">Provider 按配置顺序回退</span>
+            </div>
+
+            <div class="preset-toolbar">
+              <div class="form-group">
+                <label>配置预设</label>
+                <div class="select-wrapper">
+                  <select id="configPreset">
+                    <option value="">选择预设...</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-group">
+                <label>预设名称</label>
+                <input id="presetName" spellcheck="false" placeholder="例如：DeepSeek / 百度 / 免费兜底" />
+              </div>
+              <div class="preset-actions">
+                <button id="applyPresetBtn" class="secondary-btn" type="button">应用</button>
+                <button id="savePresetBtn" class="secondary-btn" type="button">保存</button>
+                <button id="deletePresetBtn" class="danger-btn" type="button">删除</button>
+              </div>
+            </div>
+
+            <div class="form-grid basic-grid">
+              <div class="form-group">
+                <label>主翻译平台</label>
+                <div class="select-wrapper">
+                  <select id="preset">
+                    <option value="anthropic">Anthropic 协议</option>
+                    <option value="openai">OpenAI 协议</option>
+                    <option value="deepseek">DeepSeek</option>
+                    <option value="deepl">DeepL</option>
+                    <option value="google-cloud">Google Cloud Translate</option>
+                    <option value="microsoft">Microsoft Translator</option>
+                    <option value="baidu">百度翻译</option>
+                    <option value="youdao">有道智云</option>
+                    <option value="tencent">腾讯云机器翻译</option>
+                    <option value="aliyun">阿里云机器翻译</option>
+                    <option value="volcengine">火山翻译</option>
+                    <option value="libretranslate">LibreTranslate</option>
+                    <option value="free">仅免费兜底</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label>目标语言</label>
+                <input id="targetLang" value="zh-CN" />
+              </div>
+              <div class="form-group">
+                <label>Workers</label>
+                <input id="workers" type="number" min="1" max="32" value="8" />
+              </div>
+              <div class="form-group">
+                <label>队列上限</label>
+                <input id="queueLimit" type="number" min="50" value="1000" />
+              </div>
+              <div class="form-group">
+                <label>缓存上限</label>
+                <input id="cacheLimit" type="number" min="100" value="1500" />
+              </div>
+              <div class="form-group">
+                <label>超时 (ms)</label>
+                <input id="timeoutMs" type="number" min="1500" max="6000" value="5000" />
+              </div>
+            </div>
+          </div>
+
+          <div class="panel provider-panel" id="llmFields">
+            <h3 class="inset-title">Provider 配置</h3>
+            <div class="form-grid provider-grid">
+              <div class="form-group">
+                <label>Provider 名称</label>
+                <input id="providerLabel" value="Anthropic" spellcheck="false" />
+              </div>
+              <div class="form-group">
+                <label>base_url</label>
+                <input id="baseUrl" value="https://api.anthropic.com/v1" spellcheck="false" />
+              </div>
+              <div class="form-group">
+                <label>API Key / App ID</label>
+                <input id="apiKey" type="password" spellcheck="false" placeholder="必填" />
+              </div>
+              <div class="form-group">
+                <label>API Secret</label>
+                <input id="apiSecret" type="password" spellcheck="false" placeholder="签名平台需要" />
+              </div>
+              <div class="form-group">
+                <label>模型</label>
+                <input id="model" value="claude-3-5-haiku-latest" spellcheck="false" />
+              </div>
+              <div class="form-group">
+                <label>源语言</label>
+                <input id="sourceLang" value="auto" spellcheck="false" />
+              </div>
+              <div class="form-group">
+                <label>兜底接口</label>
+                <div class="check-row">
+                  <input id="enableFallbacks" type="checkbox" checked />
+                  <span>启用 MyMemory / Andeer 回退</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="config-side">
+          <div class="panel tuning-panel">
+            <div class="section-title-compact">
+              <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+              <h3>悬浮窗设置</h3>
+            </div>
+            <div class="tuning-form">
+              <div class="form-group">
+                <label>字体大小</label>
+                <div class="font-size-control">
+                  <button type="button" id="fontSizeMinus" class="size-btn" title="减小">−</button>
+                  <div class="size-display">
+                    <span id="fontSizeValue">18</span>
+                    <span class="size-unit">px</span>
+                  </div>
+                  <button type="button" id="fontSizePlus" class="size-btn" title="增大">+</button>
+                  <input id="fontSize" type="hidden" value="18" />
+                </div>
+                <div class="size-presets">
+                  <button type="button" class="preset-btn" data-size="14">14</button>
+                  <button type="button" class="preset-btn" data-size="18">18</button>
+                  <button type="button" class="preset-btn" data-size="22">22</button>
+                  <button type="button" class="preset-btn" data-size="26">26</button>
+                </div>
+                <div class="font-preview" id="fontPreview">
+                  <div>中文：TruckersMP 翻译</div>
+                  <div>English: truckersmp chat preview</div>
+                </div>
+              </div>
+              <div class="form-group">
+                <label>透明度</label>
+                <div class="range-control">
+                  <input id="overlayOpacity" type="range" min="35" max="100" value="98" />
+                  <div class="range-value"><span id="overlayOpacityValue">98</span>%</div>
+                </div>
+              </div>
+              <div class="form-group">
+                <label>快捷键</label>
+                <input id="overlayHotkey" value="Ctrl+Shift+T" spellcheck="false" />
+              </div>
+            </div>
+          </div>
+
+          <div class="panel action-panel">
+            <div class="actions split">
+              <button id="loadConfigBtn" class="secondary-btn">读取已安装</button>
+              <button id="previewBtn" class="secondary-btn">刷新预览</button>
+              <button id="testConfigBtn" class="secondary-btn">测试配置</button>
+              <button id="saveConfigBtn" class="primary-btn glow-btn">保存配置</button>
+            </div>
+            <div id="testResult" class="test-result" aria-live="polite"></div>
+          </div>
+
+          <div class="panel preview-panel">
+            <div class="section-title">
+              <div class="title-with-icon">
+                <div class="mac-dots">
+                  <span class="mac-dot dot-red"></span>
+                  <span class="mac-dot dot-yellow"></span>
+                  <span class="mac-dot dot-green"></span>
+                </div>
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                <h2>配置预览</h2>
+              </div>
+              <span class="sub-text filename">config.json</span>
+            </div>
+            <div class="editor-container">
+              <button id="copyPreviewBtn" class="copy-badge-btn" type="button" title="复制到剪贴板">
+                <svg class="copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                <span>复制</span>
+              </button>
+              <textarea id="preview" spellcheck="false"></textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== 软件更新 ==================== -->
+      <section class="panel update-panel">
         <div class="section-title">
           <div class="title-with-icon">
             <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7"></path><polyline points="21 3 21 9 15 9"></polyline><path d="M12 7v5l3 2"></path></svg>
             <h2>软件更新</h2>
           </div>
-          <span id="updateState" class="status-badge">当前版本：--</span>
+          <div class="update-header-right">
+            <span id="updateState" class="status-badge">当前版本：--</span>
+            <div class="update-actions">
+              <button id="checkUpdateBtn" class="primary-btn" type="button">检查更新</button>
+              <button id="downloadUpdateBtn" class="primary-btn" type="button" disabled>下载并安装</button>
+            </div>
+          </div>
         </div>
-        <div class="update-layout">
-          <div class="mirror-panel">
-            <div class="mirror-head">
-              <div>
-                <h3>镜像选择</h3>
-                <span>当前：<b id="currentMirror">自动测速选择</b></span>
+
+        <!-- 检查更新 → 显示镜像选择区 + 结果 -->
+        <div id="updateBody" class="update-body">
+          <!-- 镜像选择区域 (检查更新时展开) -->
+          <div id="mirrorSelectArea" class="mirror-select-area" style="display:none;">
+            <div class="mirror-select-header">
+              <h3>选择镜像源</h3>
+              <span class="sub-text">选择一个镜像源来检查更新，速度更快更稳定</span>
+              <div class="mirror-quick-actions">
+                <button id="useDirectBtn" class="direct-btn" type="button">
+                  <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                  直连检查（不用代理）
+                </button>
+                <button id="speedTestBtn" class="secondary-btn" type="button">
+                  <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                  测速
+                </button>
+                <button id="useSelectedMirrorBtn" class="primary-btn" type="button">使用选中镜像检查</button>
               </div>
-              <button id="speedTestBtn" class="secondary-btn" type="button">测速</button>
             </div>
             <div class="mirror-editor">
-              <input id="mirrorUrl" spellcheck="false" placeholder="https://ghproxy.cc/" />
-              <button id="saveMirrorBtn" class="secondary-btn" type="button">保存</button>
-              <button id="clearMirrorBtn" class="secondary-btn" type="button">清除</button>
+              <input id="mirrorUrl" spellcheck="false" placeholder="自定义镜像，如 https://ghproxy.cc/" />
+              <button id="saveMirrorBtn" class="secondary-btn" type="button">添加</button>
+              <button id="clearMirrorBtn" class="secondary-btn" type="button">清除自定义</button>
             </div>
             <div id="mirrorList" class="mirror-list" aria-live="polite"></div>
           </div>
-          <div class="update-info">
-            <div class="update-actions">
-              <button id="checkUpdateBtn" class="secondary-btn" type="button">检查更新</button>
-              <button id="downloadUpdateBtn" class="primary-btn" type="button" disabled>下载并安装</button>
-            </div>
-            <div id="updateSummary" class="update-summary">尚未检查更新</div>
+
+          <!-- 更新结果区域 -->
+          <div id="updateResult" class="update-result" style="display:none;">
+            <div id="updateSummary" class="update-summary"></div>
             <div id="updateProgress" class="update-progress" hidden>
               <div class="progress-bar"><span id="updateProgressBar"></span></div>
               <div id="updateProgressText" class="test-meta">等待下载...</div>
             </div>
-          </div>
-          <div class="release-notes">
-            <div class="release-title">更新日志</div>
-            <div id="releaseNotes" class="release-body">检查更新后会显示 GitHub Release 内容。</div>
-          </div>
-        </div>
-      </section>
-
-      <section class="workspace-grid">
-        <div class="config-stack">
-          <div class="panel glass-panel form-section">
-          <div class="section-title">
-            <div class="title-with-icon">
-              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
-              <h2>翻译配置</h2>
-            </div>
-            <span class="sub-text">Provider 按配置顺序回退</span>
-          </div>
-
-          <div class="preset-toolbar">
-            <div class="form-group">
-              <label>配置预设</label>
-              <div class="select-wrapper">
-                <select id="configPreset">
-                  <option value="">选择预设...</option>
-                </select>
-              </div>
-            </div>
-            <div class="form-group">
-              <label>预设名称</label>
-              <input id="presetName" spellcheck="false" placeholder="例如：DeepSeek / 百度 / 免费兜底" />
-            </div>
-            <div class="preset-actions">
-              <button id="applyPresetBtn" class="secondary-btn" type="button">应用</button>
-              <button id="savePresetBtn" class="secondary-btn" type="button">保存为预设</button>
-              <button id="deletePresetBtn" class="danger-btn" type="button">删除</button>
+            <div class="release-notes">
+              <div class="release-title">更新日志</div>
+              <div id="releaseNotes" class="release-body">检查更新后会显示 GitHub Release 内容。</div>
             </div>
           </div>
 
-          <div class="form-grid basic-grid">
-            <div class="form-group">
-              <label>主翻译平台</label>
-              <div class="select-wrapper">
-                <select id="preset">
-                  <option value="anthropic">Anthropic 协议</option>
-                  <option value="openai">OpenAI 协议</option>
-                  <option value="deepseek">DeepSeek</option>
-                  <option value="deepl">DeepL</option>
-                  <option value="google-cloud">Google Cloud Translate</option>
-                  <option value="microsoft">Microsoft Translator</option>
-                  <option value="baidu">百度翻译</option>
-                  <option value="youdao">有道智云</option>
-                  <option value="tencent">腾讯云机器翻译</option>
-                  <option value="aliyun">阿里云机器翻译</option>
-                  <option value="volcengine">火山翻译</option>
-                  <option value="libretranslate">LibreTranslate</option>
-                  <option value="free">仅免费兜底</option>
-                </select>
-              </div>
-            </div>
-
-            <div class="form-group">
-              <label>目标语言</label>
-              <input id="targetLang" value="zh-CN" />
-            </div>
-
-            <div class="form-group">
-              <label>Workers</label>
-              <input id="workers" type="number" min="1" max="32" value="8" />
-            </div>
-
-            <div class="form-group">
-              <label>队列上限</label>
-              <input id="queueLimit" type="number" min="50" value="1000" />
-            </div>
-
-            <div class="form-group">
-              <label>缓存上限</label>
-              <input id="cacheLimit" type="number" min="100" value="1500" />
-            </div>
-
-            <div class="form-group">
-              <label>超时 (ms)</label>
-              <input id="timeoutMs" type="number" min="1500" max="6000" value="5000" />
-            </div>
-          </div>
-          </div>
-
-          <div class="panel glass-panel tuning-panel">
-          <div class="form-grid tuning-grid">
-            <div class="form-group">
-              <label>悬浮窗字体大小</label>
-              <div class="font-size-control">
-                <button type="button" id="fontSizeMinus" class="size-btn" title="减小">−</button>
-                <div class="size-display">
-                  <span id="fontSizeValue">18</span>
-                  <span class="size-unit">px</span>
-                </div>
-                <button type="button" id="fontSizePlus" class="size-btn" title="增大">+</button>
-                <input id="fontSize" type="hidden" value="18" />
-              </div>
-              <div class="size-presets">
-                <button type="button" class="preset-btn" data-size="14">小 14</button>
-                <button type="button" class="preset-btn" data-size="18">中 18</button>
-                <button type="button" class="preset-btn" data-size="22">大 22</button>
-                <button type="button" class="preset-btn" data-size="26">特大 26</button>
-              </div>
-              <div class="font-preview" id="fontPreview">
-                <div>中文：TruckersMP 翻译</div>
-                <div>English: truckersmp chat preview</div>
-              </div>
-            </div>
-
-            <div class="form-group">
-              <label>悬浮窗透明度</label>
-              <div class="range-control">
-                <input id="overlayOpacity" type="range" min="35" max="100" value="98" />
-                <div class="range-value"><span id="overlayOpacityValue">98</span>%</div>
-              </div>
-            </div>
-
-            <div class="form-group">
-              <label>悬浮窗快捷键</label>
-              <input id="overlayHotkey" value="Ctrl+Shift+T" spellcheck="false" />
-            </div>
-          </div>
-          </div>
-
-          <div id="llmFields" class="panel glass-panel llm-fields provider-panel">
-            <h3 class="inset-title">Provider 配置</h3>
-            <div class="form-group">
-              <label>Provider 名称</label>
-              <input id="providerLabel" value="Anthropic" spellcheck="false" />
-            </div>
-            <div class="form-group">
-              <label>base_url</label>
-              <input id="baseUrl" value="https://api.anthropic.com/v1" spellcheck="false" />
-            </div>
-            <div class="form-group">
-              <label>API Key / App ID</label>
-              <input id="apiKey" type="password" spellcheck="false" placeholder="必填" />
-            </div>
-            <div class="form-group">
-              <label>API Secret</label>
-              <input id="apiSecret" type="password" spellcheck="false" placeholder="签名平台需要" />
-            </div>
-            <div class="form-group">
-              <label>模型</label>
-              <input id="model" value="claude-3-5-haiku-latest" spellcheck="false" />
-            </div>
-            <div class="form-group">
-              <label>源语言</label>
-              <input id="sourceLang" value="auto" spellcheck="false" />
-            </div>
-            <div class="form-group">
-              <label>兜底接口</label>
-              <div class="check-row">
-                <input id="enableFallbacks" type="checkbox" checked />
-                <span>启用 MyMemory / Andeer 回退</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="panel glass-panel action-panel">
-          <div class="actions split">
-            <button id="loadConfigBtn" class="secondary-btn">读取已安装</button>
-            <button id="previewBtn" class="secondary-btn">刷新预览</button>
-            <button id="testConfigBtn" class="secondary-btn">测试配置</button>
-            <button id="saveConfigBtn" class="primary-btn glow-btn">保存配置</button>
-          </div>
-          <div id="testResult" class="test-result" aria-live="polite"></div>
-          </div>
-        </div>
-
-        <div class="panel glass-panel preview-panel">
-          <div class="section-title">
-            <div class="title-with-icon">
-              <div class="mac-dots">
-                <span class="mac-dot dot-red"></span>
-                <span class="mac-dot dot-yellow"></span>
-                <span class="mac-dot dot-green"></span>
-              </div>
-              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-              <h2>配置预览</h2>
-            </div>
-            <span class="sub-text filename">config.json</span>
-          </div>
-          <div class="editor-container">
-            <button id="copyPreviewBtn" class="copy-badge-btn" type="button" title="复制到剪贴板">
-              <svg class="copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-              <span>复制</span>
-            </button>
-            <textarea id="preview" spellcheck="false"></textarea>
+          <div id="updatePlaceholder" class="update-placeholder">
+            <svg class="update-placeholder-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            <p>点击「检查更新」选择一个镜像源查看最新版本</p>
           </div>
         </div>
       </section>
