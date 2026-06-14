@@ -1,10 +1,10 @@
 {
-  "version": "0.3.7",
-  "tag_name": "v0.3.7",
-  "name": "v0.3.7",
-  "download_url": "https://github.com/Seven-TMP/ets2-chat-translator/releases/download/v0.3.7/ETS2-Chat-Translator-Manager-Setup-0.3.7.exe",
-  "asset_name": "ETS2-Chat-Translator-Manager-Setup-0.3.7.exe",
-  "size": 82686828,
-  "html_url": "https://github.com/Seven-TMP/ets2-chat-translator/releases/tag/v0.3.7",
-  "notes": "### v0.3.7\n\n- 优化 Provider 请求调度，减少高峰聊天时的串行等待。\n- 正常请求允许更高并发，遇到 429 或频率限制后再自动降速。\n- 队列积压时减少单 Provider 额外重试，避免旧请求长期占住 Worker。\n- 管理器保存配置和预设时会加密 api_key / api_secret，插件读取时自动解密使用。\n- 日志与排错章节新增 Issues 提交流程和日志片段要求。"
+  "version": "0.3.8",
+  "tag_name": "v0.3.8",
+  "name": "v0.3.8",
+  "download_url": "https://github.com/Seven-TMP/ets2-chat-translator/releases/download/v0.3.8/ETS2-Chat-Translator-Manager-Setup-0.3.8.exe",
+  "asset_name": "ETS2-Chat-Translator-Manager-Setup-0.3.8.exe",
+  "size": 82687942,
+  "html_url": "https://github.com/Seven-TMP/ets2-chat-translator/releases/tag/v0.3.8",
+  "notes": "### v0.3.8\n\n- 更新检测流程优化：点击检查更新后先展开镜像选择，可直连检查、测速后自动选最快镜像，或手动选择镜像检查。\n- 镜像选择体验优化：更新镜像列表支持选中态、自定义镜像添加与清除，检查结果和更新日志分区展示更清晰。\n- 管理器布局调整：翻译配置、悬浮窗设置、配置预览和软件更新区域重新排版，宽屏下更容易平铺查看。"
 }
