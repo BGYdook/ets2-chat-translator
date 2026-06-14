@@ -19,6 +19,7 @@ public:
     void MessageLoop();
     void ApplyRuntime(const RuntimeConfig& runtime);
     bool SetOverlayHotkey(const std::wstring& hotkey);
+    void SetCloseButtonExits(bool value) { closeButtonExits_ = value; }
 
     unsigned int Push(ChatEntry entry);
     void PatchTranslation(unsigned int id, const std::wstring& text);
@@ -33,7 +34,10 @@ private:
     void Paint(HDC dc, RECT bounds);
     void RenderLayered();
     void LayoutSearchBox(RECT bounds);
-    void UpdateSearchText();
+    void SetSearchText(std::wstring text);
+    void SetSearchFocus(bool focused);
+    bool SearchBoxHit(int x, int y) const;
+    bool HandleSearchKey(UINT msg, WPARAM wp);
     bool EntryMatches(const ChatEntry& entry) const;
     int MatchCountUnlocked() const;
     void UpdateContentWidth(int clientWidth);
@@ -47,12 +51,10 @@ private:
     void SaveWindowState() const;
 
     HWND hwnd_ = nullptr;
-    HWND searchBox_ = nullptr;
     HINSTANCE instance_ = nullptr;
     HFONT font_ = nullptr;
     HFONT smallFont_ = nullptr;
     HFONT titleFont_ = nullptr;
-    HBRUSH editBrush_ = nullptr;
 
     mutable std::mutex lock_;
     std::vector<ChatEntry> entries_;
@@ -62,6 +64,7 @@ private:
     std::wstring status_;
     std::wstring searchText_;
     std::wstring searchDisplayText_;
+    std::wstring searchInputText_;
 
     int topBand_ = 46;
     int statusBand_ = 32;
@@ -74,9 +77,11 @@ private:
     DWORD uiThreadId_ = 0;
     bool follow_ = true;
     bool closing_ = false;
+    bool closeButtonExits_ = false;
     int hotkeyId_ = 0x4554;
-    int searchBoxId_ = 0x4555;
     bool hotkeyRegistered_ = false;
+    bool searchFocused_ = false;
+    bool searchCaretVisible_ = false;
     std::wstring overlayHotkey_ = L"Ctrl+Shift+T";
     std::wstring windowStatePath_;
     RECT searchBoxRect_{};

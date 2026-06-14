@@ -36,6 +36,7 @@ const els = {
   sourceLang: document.querySelector('#sourceLang'),
   enableFallbacks: document.querySelector('#enableFallbacks'),
   loadConfigBtn: document.querySelector('#loadConfigBtn'),
+  overlayPreviewBtn: document.querySelector('#overlayPreviewBtn'),
   previewBtn: document.querySelector('#previewBtn'),
   testConfigBtn: document.querySelector('#testConfigBtn'),
   saveConfigBtn: document.querySelector('#saveConfigBtn'),
@@ -584,6 +585,14 @@ els.uninstallBtn.addEventListener('click', async () => {
 
 /* ==================== Config Panel ==================== */
 els.loadConfigBtn.addEventListener('click', () => loadInstalledConfig(false));
+els.overlayPreviewBtn.addEventListener('click', async () => {
+  try {
+    await window.managerApi.previewOverlay();
+    setStatus('已打开悬浮窗预览，可点击搜索框输入测试');
+  } catch (error) {
+    setStatus(`打开悬浮窗预览失败：${error.message}`);
+  }
+});
 els.previewBtn.addEventListener('click', updatePreview);
 
 els.configPreset.addEventListener('change', () => {

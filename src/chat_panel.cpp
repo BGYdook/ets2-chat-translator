@@ -9,10 +9,6 @@
 #include <sstream>
 #include <windowsx.h>
 
-#ifndef EM_SETCUEBANNER
-#define EM_SETCUEBANNER 0x1501
-#endif
-
 namespace
 {
 const wchar_t* kClass = L"ETS2TranslatorPanelV4Simple";
@@ -326,6 +322,26 @@ void DrawWrappedText(HDC dc, HFONT font, COLORREF color, const std::wstring& tex
         DT_LEFT | DT_TOP | DT_WORDBREAK | DT_EDITCONTROL | DT_END_ELLIPSIS | DT_NOPREFIX);
     SelectObject(dc, old);
 }
+
+void DrawSearchIcon(HDC dc, RECT r, COLORREF color)
+{
+    HPEN pen = CreatePen(PS_SOLID, 2, color);
+    HGDIOBJ oldPen = SelectObject(dc, pen);
+    HGDIOBJ oldBrush = SelectObject(dc, GetStockObject(HOLLOW_BRUSH));
+
+    int cx = r.left + (r.right - r.left) / 2 - 1;
+    int cy = r.top + (r.bottom - r.top) / 2 - 1;
+    int iconW = (int)(r.right - r.left);
+    int iconH = (int)(r.bottom - r.top);
+    int radius = (std::max)(4, (std::min)(iconW, iconH) / 4);
+    Ellipse(dc, cx - radius, cy - radius, cx + radius, cy + radius);
+    MoveToEx(dc, cx + radius - 1, cy + radius - 1, nullptr);
+    LineTo(dc, cx + radius + 5, cy + radius + 5);
+
+    SelectObject(dc, oldBrush);
+    SelectObject(dc, oldPen);
+    DeleteObject(pen);
+}
 }
 
 ChatPanel::ChatPanel()
@@ -407,12 +423,9 @@ void ChatPanel::ApplyRuntime(const RuntimeConfig& runtime)
     SetOverlayHotkey(runtime.overlayHotkey);
 
     if (hwnd_) {
-        if (searchBox_) {
-            SendMessageW(searchBox_, WM_SETFONT, (WPARAM)smallFont_, TRUE);
-            RECT rc{};
-            GetClientRect(hwnd_, &rc);
-            LayoutSearchBox(rc);
-        }
+        RECT rc{};
+        GetClientRect(hwnd_, &rc);
+        LayoutSearchBox(rc);
         ScrollToEnd();
         RenderLayered();
     }
@@ -432,10 +445,7 @@ void ChatPanel::Close()
     if (font_) DeleteObject(font_);
     if (smallFont_) DeleteObject(smallFont_);
     if (titleFont_) DeleteObject(titleFont_);
-    if (editBrush_) DeleteObject(editBrush_);
     font_ = smallFont_ = titleFont_ = nullptr;
-    editBrush_ = nullptr;
-    searchBox_ = nullptr;
 }
 
 void ChatPanel::MessageLoop()
@@ -558,19 +568,12 @@ LRESULT CALLBACK ChatPanel::WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
     case WM_NCCREATE:
         return TRUE;
 
-    case WM_CREATE:
-        self->searchBox_ = CreateWindowExW(0, L"EDIT", L"",
-            WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
-            0, 0, 0, 0, hwnd, (HMENU)(INT_PTR)self->searchBoxId_, self->instance_, nullptr);
-        if (self->searchBox_) {
-            SendMessageW(self->searchBox_, WM_SETFONT, (WPARAM)self->smallFont_, TRUE);
-            SendMessageW(self->searchBox_, EM_SETCUEBANNER, FALSE, (LPARAM)L"搜索");
-            SendMessageW(self->searchBox_, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(7, 7));
-            RECT rc{};
-            GetClientRect(hwnd, &rc);
-            self->LayoutSearchBox(rc);
-        }
+    case WM_CREATE: {
+        RECT rc{};
+        GetClientRect(hwnd, &rc);
+        self->LayoutSearchBox(rc);
         return 0;
+    }
 
     case WM_PAINT: {
         PAINTSTRUCT ps{};
@@ -587,11 +590,7 @@ LRESULT CALLBACK ChatPanel::WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
         if (p.y >= rc.bottom - 12 && p.x >= rc.right - 12) return HTBOTTOMRIGHT;
         if (p.y >= rc.bottom - 8) return HTBOTTOM;
         if (p.x >= rc.right - 8) return HTRIGHT;
-        if (self->searchBox_ && IsWindowVisible(self->searchBox_) &&
-            p.x >= self->searchBoxRect_.left && p.x <= self->searchBoxRect_.right &&
-            p.y >= self->searchBoxRect_.top && p.y <= self->searchBoxRect_.bottom) {
-            return HTCLIENT;
-        }
+        if (self->SearchBoxHit(p.x, p.y)) return HTCLIENT;
         if (p.y < self->topBand_ && p.x < rc.right - 40) return HTCAPTION;
         return HTCLIENT;
     }
@@ -609,24 +608,17 @@ LRESULT CALLBACK ChatPanel::WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
     case WM_EXITSIZEMOVE:
         self->SaveWindowState();
         return 0;
-    case WM_COMMAND:
-        if ((int)LOWORD(wp) == self->searchBoxId_ && HIWORD(wp) == EN_CHANGE) {
-            self->UpdateSearchText();
-            self->ScrollToEnd();
-            self->RenderLayered();
-            return 0;
-        }
+    case WM_CHAR:
+    case WM_KEYDOWN:
+        if (self->HandleSearchKey(msg, wp)) return 0;
         break;
-    case WM_CTLCOLOREDIT:
-    case WM_CTLCOLORSTATIC:
-        if ((HWND)lp == self->searchBox_) {
-            HDC editDc = (HDC)wp;
-            SetTextColor(editDc, cText);
-            SetBkColor(editDc, RGB(11, 16, 24));
-            if (!self->editBrush_) self->editBrush_ = CreateSolidBrush(RGB(11, 16, 24));
-            return (LRESULT)self->editBrush_;
-        }
-        break;
+    case WM_SETFOCUS:
+        if (self->searchFocused_) self->searchCaretVisible_ = true;
+        self->RenderLayered();
+        return 0;
+    case WM_KILLFOCUS:
+        self->SetSearchFocus(false);
+        return 0;
     case WM_MOUSEWHEEL:
         self->OnWheel(GET_WHEEL_DELTA_WPARAM(wp));
         return 0;
@@ -757,12 +749,44 @@ void ChatPanel::Paint(HDC dc, RECT bounds)
     RECT accent{ 16, 12, 20, topBand_ - 10 };
     RoundFill(dc, accent, 4, cBlue);
 
-    RECT title{ 30, 0, 174, topBand_ };
-    DrawTextLine(dc, titleFont_, cText, L"TruckersMP Chat", title, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    bool hasSearchBox = searchBoxRect_.right > searchBoxRect_.left && searchBoxRect_.bottom > searchBoxRect_.top;
+    RECT title{ 30, 0, hasSearchBox ? searchBoxRect_.left - 10 : bounds.right - 120, topBand_ };
+    if (title.right < title.left + 92) title.right = title.left + 92;
+    DrawTextLine(dc, titleFont_, cText, bounds.right < 520 ? L"TruckersMP" : L"TruckersMP Chat",
+        title, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
 
-    if (searchBox_ && IsWindowVisible(searchBox_)) {
-        RoundFill(dc, searchBoxRect_, 7, RGB(11, 16, 24));
-        StrokeRound(dc, searchBoxRect_, 7, RGB(52, 64, 86));
+    if (hasSearchBox) {
+        RoundFill(dc, searchBoxRect_, 7, searchFocused_ ? RGB(13, 22, 34) : RGB(11, 16, 24));
+        StrokeRound(dc, searchBoxRect_, 7, searchFocused_ ? cCyan : RGB(52, 64, 86));
+
+        RECT icon{ searchBoxRect_.left + 8, searchBoxRect_.top + 4,
+            searchBoxRect_.left + 28, searchBoxRect_.bottom - 4 };
+        DrawSearchIcon(dc, icon, searchFocused_ ? cCyan : cDim);
+
+        std::wstring value;
+        bool focused = false;
+        bool caret = false;
+        {
+            std::lock_guard<std::mutex> guard(lock_);
+            value = searchInputText_;
+            focused = searchFocused_;
+            caret = searchCaretVisible_;
+        }
+        RECT inputText{ searchBoxRect_.left + 34, searchBoxRect_.top,
+            searchBoxRect_.right - 10, searchBoxRect_.bottom };
+        if (value.empty()) {
+            DrawTextLine(dc, smallFont_, RGB(105, 118, 138), L"搜索", inputText,
+                DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+        } else {
+            DrawTextLine(dc, smallFont_, cText, value, inputText,
+                DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+            if (focused && caret) {
+                int textW = TextWidth(dc, smallFont_, value);
+                int x = (std::min)(inputText.left + textW + 2, inputText.right - 2);
+                RECT cursor{ x, inputText.top + 6, x + 1, inputText.bottom - 6 };
+                Fill(dc, cursor, cCyan);
+            }
+        }
     }
 
     RECT tag{ bounds.right - 118, 14, bounds.right - 52, topBand_ - 12 };
@@ -879,45 +903,108 @@ void ChatPanel::UpdateContentWidth(int clientWidth)
 void ChatPanel::LayoutSearchBox(RECT bounds)
 {
     searchBoxRect_ = {};
-    if (!searchBox_) return;
 
     int clientWidth = (int)bounds.right;
-    int left = 206;
-    int rightLimit = clientWidth - 132;
-    int width = (std::min)(180, (std::max)(112, clientWidth / 4));
+    int rightLimit = clientWidth - 138;
+    int left = clientWidth >= 520 ? 204 : 142;
+    int width = (std::min)(210, (std::max)(118, clientWidth / 3));
+    if (clientWidth < 520) width = (std::max)(96, rightLimit - left);
     if (left + width > rightLimit) width = rightLimit - left;
-    int right = left + width;
     int height = (std::max)(24, (std::min)(30, topBand_ - 20));
     int top = (std::max)(8, (topBand_ - height) / 2);
     int bottom = top + height;
 
-    if (clientWidth < 520 || width < 96 || right > rightLimit || bottom <= top + 16) {
-        ShowWindow(searchBox_, SW_HIDE);
+    if (clientWidth < 360 || rightLimit <= left + 64 || width < 72 || bottom <= top + 16) {
+        SetSearchFocus(false);
         return;
     }
 
+    int right = left + width;
     searchBoxRect_ = { left, top, right, bottom };
-    SetWindowPos(searchBox_, nullptr, left + 8, top + 3,
-        (std::max)(48, width - 16), (std::max)(18, height - 6),
-        SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW);
 }
 
-void ChatPanel::UpdateSearchText()
+void ChatPanel::SetSearchText(std::wstring text)
 {
-    if (!searchBox_) return;
-    int length = GetWindowTextLengthW(searchBox_);
-    std::wstring value((std::max)(0, length) + 1, L'\0');
-    if (length > 0) {
-        GetWindowTextW(searchBox_, value.data(), length + 1);
-    }
-    value.resize((std::max)(0, length));
-    value = text::Trim(value);
-    std::wstring lowered = LowerCopy(value);
+    if (text.size() > 80) text.resize(80);
+    text = text::Trim(std::move(text));
+    std::wstring lowered = LowerCopy(text);
     {
         std::lock_guard<std::mutex> guard(lock_);
-        searchDisplayText_ = value;
+        searchInputText_ = text;
+        searchDisplayText_ = text;
         searchText_ = std::move(lowered);
     }
+    ScrollToEnd();
+    RenderLayered();
+}
+
+void ChatPanel::SetSearchFocus(bool focused)
+{
+    bool changed = false;
+    {
+        std::lock_guard<std::mutex> guard(lock_);
+        changed = searchFocused_ != focused || searchCaretVisible_ != focused;
+        searchFocused_ = focused;
+        searchCaretVisible_ = focused;
+    }
+    if (changed) RenderLayered();
+}
+
+bool ChatPanel::SearchBoxHit(int x, int y) const
+{
+    return searchBoxRect_.right > searchBoxRect_.left &&
+        x >= searchBoxRect_.left && x <= searchBoxRect_.right &&
+        y >= searchBoxRect_.top && y <= searchBoxRect_.bottom;
+}
+
+bool ChatPanel::HandleSearchKey(UINT msg, WPARAM wp)
+{
+    if (!searchFocused_) return false;
+
+    if (msg == WM_KEYDOWN) {
+        if (wp == VK_BACK) {
+            std::wstring next;
+            {
+                std::lock_guard<std::mutex> guard(lock_);
+                next = searchInputText_;
+                if (!next.empty()) next.pop_back();
+            }
+            SetSearchText(next);
+            return true;
+        }
+        if (wp == VK_ESCAPE) {
+            if (!searchInputText_.empty()) {
+                SetSearchText(L"");
+            } else {
+                SetSearchFocus(false);
+            }
+            return true;
+        }
+        if (wp == VK_RETURN) {
+            SetSearchFocus(false);
+            return true;
+        }
+        if (wp == VK_LEFT || wp == VK_RIGHT || wp == VK_UP || wp == VK_DOWN ||
+            wp == VK_HOME || wp == VK_END || wp == VK_DELETE || wp == VK_TAB) {
+            return true;
+        }
+        return false;
+    }
+
+    if (msg == WM_CHAR) {
+        wchar_t ch = (wchar_t)wp;
+        if (ch < 0x20 || ch == 0x7F) return true;
+        std::wstring next;
+        {
+            std::lock_guard<std::mutex> guard(lock_);
+            next = searchInputText_;
+            next.push_back(ch);
+        }
+        SetSearchText(next);
+        return true;
+    }
+
+    return false;
 }
 
 bool ChatPanel::EntryMatches(const ChatEntry& entry) const
@@ -1023,7 +1110,18 @@ void ChatPanel::OnClick(int x, int y)
 {
     RECT rc{};
     GetClientRect(hwnd_, &rc);
+    if (SearchBoxHit(x, y)) {
+        SetFocus(hwnd_);
+        SetSearchFocus(true);
+        return;
+    }
+    if (searchFocused_) SetSearchFocus(false);
     if (y >= 6 && y <= topBand_ - 6 && x >= rc.right - 34 && x <= rc.right - 10) {
-        ShowWindow(hwnd_, SW_HIDE);
+        if (closeButtonExits_) {
+            closing_ = true;
+            DestroyWindow(hwnd_);
+        } else {
+            ShowWindow(hwnd_, SW_HIDE);
+        }
     }
 }

@@ -112,6 +112,22 @@ if %ERRORLEVEL% neq 0 (
     exit /b 1
 )
 
+echo [INFO] Building overlay preview tool...
+cl.exe /nologo /EHsc /O2 /std:c++17 /utf-8 /W3 ^
+    /D "WIN32" /D "NDEBUG" /D "_WINDOWS" /D "_WIN64" ^
+    /I "include" /I "src" ^
+    /Fe"build\ets2_chat_translator_preview.exe" ^
+    /Fo"build\\" ^
+    src\overlay_preview.cpp src\chat_panel.cpp src\text_codec.cpp ^
+    /link /SUBSYSTEM:WINDOWS /MACHINE:X64 user32.lib gdi32.lib shell32.lib
+
+if %ERRORLEVEL% neq 0 (
+    echo [ERROR] Overlay preview build failed.
+    popd
+    if not defined NO_PAUSE pause
+    exit /b 1
+)
+
 echo [INFO] Building JavaScript/Electron manager app...
 pushd manager
 if exist "node_modules\electron" if exist "node_modules\electron-builder" (
@@ -176,6 +192,7 @@ del /q build\*.obj build\*.exp 2>nul
 echo.
 echo Build successful:
 echo   build\ets2_chat_translator.dll
+if exist "build\ets2_chat_translator_preview.exe" echo   build\ets2_chat_translator_preview.exe
 if exist "build\ets2_chat_translator_app\ETS2 Chat Translator Manager.exe" echo   build\ets2_chat_translator_app\ETS2 Chat Translator Manager.exe
 for %%F in ("build\installer\ETS2-Chat-Translator-Manager-Setup-*.exe") do if exist "%%~fF" echo   %%~fF
 echo.

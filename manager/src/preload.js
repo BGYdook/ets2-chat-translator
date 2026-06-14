@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('managerApi', {
   readConfig: (game, gamePath) => ipcRenderer.invoke('read-config', game, gamePath),
   writeConfig: (game, gamePath, jsonText) => ipcRenderer.invoke('write-config', game, gamePath, jsonText),
   testConfig: (jsonText) => ipcRenderer.invoke('test-config', jsonText),
+  previewOverlay: () => ipcRenderer.invoke('preview-overlay'),
   listPresets: () => ipcRenderer.invoke('list-presets'),
   savePreset: (name, jsonText) => ipcRenderer.invoke('save-preset', name, jsonText),
   deletePreset: (name) => ipcRenderer.invoke('delete-preset', name),

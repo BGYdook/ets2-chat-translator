@@ -5,6 +5,7 @@ const childProcess = require('child_process');
 const crypto = require('crypto');
 
 const DLL_NAME = 'ets2_chat_translator.dll';
+const PREVIEW_EXE_NAME = 'ets2_chat_translator_preview.exe';
 const CONFIG_NAME = 'ets2_chat_translator_config.json';
 const PRESETS_NAME = 'config_presets.json';
 const UPDATE_SETTINGS_NAME = 'update_settings.json';
@@ -151,6 +152,16 @@ function sourceDllPath() {
   if (fs.existsSync(besideExe)) return besideExe;
 
   return path.join(appRoot(), 'build', DLL_NAME);
+}
+
+function previewExePath() {
+  const packaged = path.join(process.resourcesPath || '', PREVIEW_EXE_NAME);
+  if (packaged && fs.existsSync(packaged)) return packaged;
+
+  const besideExe = path.join(appRoot(), PREVIEW_EXE_NAME);
+  if (fs.existsSync(besideExe)) return besideExe;
+
+  return path.join(appRoot(), 'build', PREVIEW_EXE_NAME);
 }
 
 function pluginDir(ets2Path) {
@@ -1576,6 +1587,18 @@ ipcMain.handle('write-config', (_event, game, ets2Path, jsonText) => {
 });
 
 ipcMain.handle('test-config', (_event, jsonText) => testConfigText(jsonText));
+ipcMain.handle('preview-overlay', () => {
+  const exe = previewExePath();
+  if (!fs.existsSync(exe)) {
+    throw new Error(`预览程序不存在：${exe}`);
+  }
+  childProcess.spawn(exe, [], {
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: false
+  }).unref();
+  return { ok: true, path: exe };
+});
 ipcMain.handle('list-presets', () => readPresets());
 ipcMain.handle('save-preset', (_event, name, jsonText) => savePreset(name, jsonText));
 ipcMain.handle('delete-preset', (_event, name) => deletePreset(name));

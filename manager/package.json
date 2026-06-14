@@ -1,6 +1,6 @@
 {
   "name": "ets2-chat-translator-manager",
-  "version": "0.3.10",
+  "version": "0.3.11",
   "private": true,
   "description": "ETS2 Chat Translator desktop manager",
   "main": "src/main.js",
@@ -24,6 +24,10 @@
       {
         "from": "../build/ets2_chat_translator.dll",
         "to": "ets2_chat_translator.dll"
+      },
+      {
+        "from": "../build/ets2_chat_translator_preview.exe",
+        "to": "ets2_chat_translator_preview.exe"
       },
       {
         "from": "../logo.ico",
