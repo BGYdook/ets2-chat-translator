@@ -2107,16 +2107,19 @@ void TranslateEngine::Submit(unsigned int id, const std::wstring& value)
 
     if (LooksLikeSingleNameOrNoise(value)) {
         LogLine(L"[Translate] \"" + value + L"\" -> skip: name/noise");
+        if (done_) done_(id, value);
         return;
     }
 
     if (IsNonTranslatableChatText(value) || text::MostlyChinese(value)) {
         LogLine(L"[Translate] \"" + value + L"\" -> skip: non-translatable");
+        if (done_) done_(id, value);
         return;
     }
 
     if (!running_) {
         LogLine(L"[Translate] \"" + value + L"\" -> skip: engine not running");
+        if (done_) done_(id, value);
         return;
     }
 
@@ -2142,6 +2145,7 @@ void TranslateEngine::Submit(unsigned int id, const std::wstring& value)
             std::lock_guard<std::mutex> e(errorLock_);
             lastError_ = L"translation queue is full";
             LogLine(L"[Translate] \"" + value + L"\" -> skip: queue full");
+            if (done_) done_(id, value);
             return;
         }
         inFlight_[value].push_back(id);
@@ -2183,6 +2187,11 @@ int ProviderMaxInFlight(const TranslateProvider& provider)
 {
     if (IsOllamaLikeProvider(provider.Settings())) return 1;
     return ProviderMaxInFlight(provider.Kind());
+}
+
+bool ShouldRetryProvider(const TranslateProvider& provider)
+{
+    return !IsOllamaLikeProvider(provider.Settings());
 }
 
 bool RetryableProviderError(const std::wstring& error)
@@ -2236,8 +2245,9 @@ void TranslateEngine::Worker()
                 ids.push_back(job.id);
             }
         }
-        if (!out.empty() && done_ && running_) {
-            for (unsigned int id : ids) done_(id, out);
+        if (done_ && running_) {
+            std::wstring display = out.empty() ? job.text : out;
+            for (unsigned int id : ids) done_(id, display);
         }
     }
 }
@@ -2285,7 +2295,7 @@ std::wstring TranslateEngine::RunProviders(const std::wstring& value, HttpAgent&
         std::wstring requestAt = NowStamp();
         auto totalStarted = std::chrono::steady_clock::now();
         int attemptCount = 0;
-        int maxAttempts = (providers_.size() == 1 && PendingJobCount() <= 2) ? 2 : 1;
+        int maxAttempts = (providers_.size() == 1 && PendingJobCount() <= 2 && ShouldRetryProvider(*p)) ? 2 : 1;
         for (int attempt = 0; attempt < maxAttempts; ++attempt) {
             ++attemptCount;
             error.clear();

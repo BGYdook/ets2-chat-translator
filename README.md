@@ -103,7 +103,7 @@ graph TD
 ```
 
 1. **下载并运行安装包**：
-   双击运行 `build\installer\ETS2-Chat-Translator-Manager-Setup-0.3.14.exe` 进行安装。
+   双击运行 `build\installer\ETS2-Chat-Translator-Manager-Setup-0.3.15.exe` 进行安装。
 2. **打开管理器**：启动安装好的 `ETS2 Chat Translator Manager`。
 3. **识别游戏目录**：选择对应的游戏（ETS2 或 ATS），管理器会尝试自动定位。若未找到，可手动选择游戏主程序所在的 bin 目录。
 4. **一键部署 DLL**：点击 `安装 / 更新 DLL` 按钮。
@@ -281,7 +281,7 @@ build/
 ├── ets2_chat_translator_app/                       # 绿色版管理器 (绿色免安装)
 │   └── ETS2 Chat Translator Manager.exe
 └── installer/
-    └── ETS2-Chat-Translator-Manager-Setup-0.3.14.exe # 独立安装包 (集成 NSIS)
+    └── ETS2-Chat-Translator-Manager-Setup-0.3.15.exe # 独立安装包 (集成 NSIS)
 ```
 
 ---
@@ -335,6 +335,11 @@ build/
 ---
 
 ## 🧾 历史版本更新
+
+### 🚀 v0.3.15
+* **🧯 修复“翻译中...”卡住**：用户名/噪音、无需翻译、队列满或 Provider 最终失败时都会回填原文或失败提示，不再永久停留在占位状态。
+* **🦙 Ollama 慢请求优化**：Ollama / `translategemma` 单 Provider 不再做第二次长超时重试，避免一条消息最多卡到 60 秒。
+* **🧾 日志版本标识**：DLL 启动日志显示正式版本号，方便以后从 `game.log.txt` 判断用户是否装了最新版本。
 
 ### 🚀 v0.3.14
 * **🦙 Ollama 配置自修正**：读取旧配置或切换到 Ollama / `translategemma` 时，管理器会自动把 Provider 名称修正为 `Ollama`、并发调整为 `1`、超时调整为 `30000ms`。

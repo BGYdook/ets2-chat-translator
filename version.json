@@ -1,11 +1,11 @@
 {
-  "version": "0.3.14",
-  "tag_name": "v0.3.14",
-  "name": "v0.3.14",
-  "download_url": "https://github.com/Seven-TMP/ets2-chat-translator/releases/download/v0.3.14/ETS2-Chat-Translator-Manager-Setup-0.3.14.exe",
-  "asset_name": "ETS2-Chat-Translator-Manager-Setup-0.3.14.exe",
-  "size": 82823991,
-  "sha256": "1D1C1102C5D007728B7D09FCE3E7B7720B68A538C12B4B7FE32982C066755804",
-  "html_url": "https://github.com/Seven-TMP/ets2-chat-translator/releases/tag/v0.3.14",
-  "notes": "### v0.3.14\n\n- 读取旧配置或切换到 Ollama / translategemma 时，管理器会自动把 Provider 名称修正为 Ollama、并发调整为 1、超时调整为 30000ms。\n- 测试配置失败时，如果 Base URL 仍是 localhost，会明确提示 localhost 只代表当前电脑，远端部署应填写 http://远端IP:11434/v1。\n- 只要配置里识别到 Ollama / :11434 / translategemma，测试接口会按 30 秒超时执行，避免 27B 首次加载或排队时被 6 秒提前判定失败。"
+  "version": "0.3.15",
+  "tag_name": "v0.3.15",
+  "name": "v0.3.15",
+  "download_url": "https://github.com/Seven-TMP/ets2-chat-translator/releases/download/v0.3.15/ETS2-Chat-Translator-Manager-Setup-0.3.15.exe",
+  "asset_name": "ETS2-Chat-Translator-Manager-Setup-0.3.15.exe",
+  "size": 82823984,
+  "sha256": "EA57987B43B7697D46CB03B82B7D920F8DB6BFD513FC1E6FC3B18F62F31030EB",
+  "html_url": "https://github.com/Seven-TMP/ets2-chat-translator/releases/tag/v0.3.15",
+  "notes": "### v0.3.15\n\n- 用户名/噪音、无需翻译、队列满或 Provider 最终失败时都会回填原文或失败提示，不再永久停留在“翻译中...”占位状态。\n- Ollama / translategemma 单 Provider 不再做第二次长超时重试，避免一条消息最多卡到 60 秒。\n- DLL 启动日志显示正式版本号，方便以后从 game.log.txt 判断用户是否装了最新版本。"
 }
