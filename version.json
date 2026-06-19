@@ -4,8 +4,8 @@
   "name": "v0.3.17",
   "download_url": "https://github.com/Seven-TMP/ets2-chat-translator/releases/download/v0.3.17/ETS2-Chat-Translator-Manager-Setup-0.3.17.exe",
   "asset_name": "ETS2-Chat-Translator-Manager-Setup-0.3.17.exe",
-  "size": 0,
-  "sha256": "",
+  "size": 82837495,
+  "sha256": "f38929ce3930bc42249ac33c5990c1479e5951ae6ac1bb3727ca3af51c7a0c52",
   "html_url": "https://github.com/Seven-TMP/ets2-chat-translator/releases/tag/v0.3.17",
-  "notes": "### v0.3.17\n\n- 新增悬浮窗中文输入框，可将中文翻译为目标语言并粘贴到游戏聊天框。\n- 粘贴发送流程增加忙碌状态、剪贴板恢复和游戏窗口校验，降低误发风险。\n- 管理器底部新增作者信息。\n- 同步 README、DLL 日志版本和管理器版本。"
+  "notes": "### v0.3.17\n\n- 新增悬浮窗中文输入框，可将中文翻译为目标语言并粘贴到游戏聊天框。\n- 优化粘贴发送流程，增加忙碌状态、剪贴板恢复和游戏窗口校验，降低误发风险。\n- 管理器底部新增作者信息。\n- 同步 README、DLL 日志版本和管理器版本。"
 }
