@@ -36,6 +36,7 @@ void AppRuntime::Stop()
     if (translator_) translator_->Stop();
     if (panel_ && panel_->Window()) PostMessageW(panel_->Window(), WM_CLOSE, 0, 0);
 
+    if (composeThread_.joinable()) composeThread_.join();
     if (ui_.joinable()) ui_.join();
 }
 
@@ -74,6 +75,9 @@ bool AppRuntime::Boot()
         Log("[ChatTranslator] failed to create panel");
         return false;
     }
+    panel_->SetComposeCallback([this](const std::wstring& text) {
+        OnComposeSubmit(text);
+    });
     Log("[ChatTranslator] panel created");
 
     bool translationOk = StartTranslator();
@@ -102,6 +106,7 @@ bool AppRuntime::Boot()
 
 void AppRuntime::Teardown()
 {
+    if (composeThread_.joinable()) composeThread_.join();
     {
         std::lock_guard<std::mutex> g(translatorLock_);
         if (translator_) translator_->Stop();
@@ -228,4 +233,156 @@ void AppRuntime::LogValue(const std::wstring& prefix, const std::wstring& value)
     if (!logger_) return;
     std::string msg = text::ToUtf8(prefix + value);
     logger_(SCS_LOG_TYPE_message, msg.c_str());
+}
+
+static bool PasteTextToGameChat(const std::wstring& text);
+
+void AppRuntime::OnComposeSubmit(const std::wstring& text)
+{
+    if (!alive_ || !panel_) return;
+    if (composeBusy_.exchange(true)) {
+        panel_->SetComposeStatus(L"Previous compose is still running...");
+        return;
+    }
+
+    LogValue(L"[ChatTranslator] compose input: ", text);
+    panel_->SetComposeStatus(L"Translating and preparing game chat...");
+
+    if (composeThread_.joinable()) composeThread_.join();
+    composeThread_ = std::thread([this, text]() {
+        std::wstring translated = text;
+        {
+            std::lock_guard<std::mutex> g(translatorLock_);
+            if (translator_ && translator_->ProviderCount() > 0) {
+                translated = translator_->TranslateCompose(text);
+            }
+        }
+        FinishComposeSend(translated);
+        composeBusy_ = false;
+    });
+}
+
+void AppRuntime::FinishComposeSend(const std::wstring& translated)
+{
+    if (!alive_ || !panel_) return;
+
+    if (panel_->IsVisible()) {
+        ShowWindow(panel_->Window(), SW_HIDE);
+    }
+
+    bool ok = PasteTextToGameChat(translated);
+    if (panel_->Window() && !panel_->IsVisible()) {
+        ShowWindow(panel_->Window(), SW_SHOWNA);
+        SetWindowPos(panel_->Window(), HWND_TOPMOST, 0, 0, 0, 0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    }
+    panel_->PostComposeStatus(ok ? L"Pasted to game chat. Press Enter to send." : L"Send failed: game window or clipboard unavailable.");
+}
+
+static HWND FindGameWindow()
+{
+    struct Ctx { DWORD pid; HWND result; };
+    Ctx ctx{ GetCurrentProcessId(), nullptr };
+
+    EnumWindows([](HWND hwnd, LPARAM lParam) -> BOOL {
+        auto& ctx = *reinterpret_cast<Ctx*>(lParam);
+        DWORD wp = 0;
+        GetWindowThreadProcessId(hwnd, &wp);
+        if (wp != ctx.pid) return TRUE;
+        if (!IsWindowVisible(hwnd)) return TRUE;
+        if (GetWindow(hwnd, GW_OWNER) != nullptr) return TRUE;
+        ctx.result = hwnd;
+        return FALSE;
+    }, reinterpret_cast<LPARAM>(&ctx));
+
+    return ctx.result;
+}
+
+static bool PasteTextToGameChat(const std::wstring& text)
+{
+    if (text.empty()) return false;
+    HWND gameWnd = FindGameWindow();
+    if (!gameWnd) return false;
+
+    std::wstring previousText;
+    bool hadText = false;
+    bool ok = false;
+
+    if (OpenClipboard(nullptr)) {
+        HANDLE old = GetClipboardData(CF_UNICODETEXT);
+        if (old) {
+            const wchar_t* oldText = static_cast<const wchar_t*>(GlobalLock(old));
+            if (oldText) {
+                previousText = oldText;
+                hadText = true;
+                GlobalUnlock(old);
+            }
+        }
+
+        if (EmptyClipboard()) {
+            size_t cb = (text.size() + 1) * sizeof(wchar_t);
+            HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, cb);
+            if (hMem) {
+                wchar_t* p = static_cast<wchar_t*>(GlobalLock(hMem));
+                if (p) {
+                    memcpy(p, text.c_str(), cb);
+                    GlobalUnlock(hMem);
+                    ok = SetClipboardData(CF_UNICODETEXT, hMem) != nullptr;
+                }
+                if (!ok) GlobalFree(hMem);
+            }
+        }
+        CloseClipboard();
+    }
+    if (!ok) return false;
+
+    Sleep(250);
+    SetForegroundWindow(gameWnd);
+    Sleep(80);
+
+    auto keyDown = [](WORD vk) {
+        INPUT input = {};
+        input.type = INPUT_KEYBOARD;
+        input.ki.wVk = vk;
+        SendInput(1, &input, sizeof(INPUT));
+    };
+
+    auto keyUp = [](WORD vk) {
+        INPUT input = {};
+        input.type = INPUT_KEYBOARD;
+        input.ki.wVk = vk;
+        input.ki.dwFlags = KEYEVENTF_KEYUP;
+        SendInput(1, &input, sizeof(INPUT));
+    };
+    auto press = [&](WORD vk) { keyDown(vk); Sleep(25); keyUp(vk); };
+
+    press('Y');
+    Sleep(120);
+
+    keyDown(VK_CONTROL);
+    Sleep(25);
+    press('V');
+    Sleep(25);
+    keyUp(VK_CONTROL);
+    Sleep(80);
+
+    if (OpenClipboard(nullptr)) {
+        EmptyClipboard();
+        if (hadText) {
+            size_t cb = (previousText.size() + 1) * sizeof(wchar_t);
+            HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, cb);
+            if (hMem) {
+                wchar_t* p = static_cast<wchar_t*>(GlobalLock(hMem));
+                if (p) {
+                    memcpy(p, previousText.c_str(), cb);
+                    GlobalUnlock(hMem);
+                    if (!SetClipboardData(CF_UNICODETEXT, hMem)) GlobalFree(hMem);
+                } else {
+                    GlobalFree(hMem);
+                }
+            }
+        }
+        CloseClipboard();
+    }
+    return true;
 }

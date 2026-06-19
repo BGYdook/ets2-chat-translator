@@ -2655,3 +2655,51 @@ bool TranslateEngine::ShouldTranslate(const std::wstring& text)
     if (LooksLikeGestureOnly(value) || IsNonTranslatableChatText(value)) return false;
     return !text::MostlyChinese(value);
 }
+
+std::wstring TranslateEngine::TranslateCompose(const std::wstring& text)
+{
+    if (text.empty()) return text;
+
+    HttpAgent http(runtime_.timeoutMs);
+    std::wstring translated;
+    std::wstring errors;
+
+    for (size_t i = 0; i < providers_.size(); ++i) {
+        if (!providers_[i] || !providers_[i]->Settings().enabled) continue;
+
+        ProviderSettings swapped = providers_[i]->Settings();
+        std::wstring composeSource = EffectiveTarget(swapped, runtime_);
+        std::wstring composeTarget = (swapped.sourceLanguage.empty() || swapped.sourceLanguage == L"auto")
+            ? L"en"
+            : swapped.sourceLanguage;
+        swapped.sourceLanguage = composeSource.empty() ? L"zh-CN" : composeSource;
+        swapped.targetLanguage = composeTarget;
+
+        RuntimeConfig composeRuntime = runtime_;
+        composeRuntime.targetLanguage = composeTarget;
+
+        auto provider = MakeProvider(swapped);
+        if (!provider || !provider->Ready()) continue;
+        provider->SetLogger([this](const std::wstring& line) { LogLine(line); });
+
+        std::wstring error;
+        translated = provider->Translate(text, composeRuntime, http, error);
+        LogLine(L"[Compose] \"" + text + L"\" provider[" + std::to_wstring((int)i + 1) + L"/" +
+            std::to_wstring(providers_.size()) + L"] " + provider->Name() + L" -> " +
+            (translated.empty() ? L"(empty)" : translated) +
+            (error.empty() ? L"" : L" err=" + error));
+
+        if (!translated.empty() && translated != text && !LooksUntranslated(text, translated, composeRuntime)) {
+            return translated;
+        }
+        if (!errors.empty()) errors += L" | ";
+        errors += provider->Name() + L": " + (error.empty() ? L"returned original/non-target text" : error);
+        translated.clear();
+    }
+
+    if (!errors.empty()) {
+        std::lock_guard<std::mutex> g(errorLock_);
+        lastError_ = errors;
+    }
+    return text;
+}

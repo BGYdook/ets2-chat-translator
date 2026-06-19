@@ -48,6 +48,7 @@ public:
     bool Start(RuntimeConfig runtime, std::vector<ProviderSettings> providers, Done done);
     void Stop();
     void Submit(unsigned int id, const std::wstring& text);
+    std::wstring TranslateCompose(const std::wstring& text);
     void SetLogger(Logger logger) { logger_ = std::move(logger); }
 
     size_t ProviderCount() const { return providers_.size(); }
