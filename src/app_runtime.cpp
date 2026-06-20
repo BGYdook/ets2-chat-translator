@@ -4,6 +4,7 @@
 #include "win_paths.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cwctype>
 
 AppRuntime::AppRuntime(HINSTANCE dll, scs_log_t logger, std::wstring gameId, std::wstring gameName)
@@ -31,6 +32,7 @@ void AppRuntime::Stop()
 {
     if (!alive_ && !ui_.joinable()) return;
     alive_ = false;
+    composeConfirmCv_.notify_all();
 
     if (tailer_) tailer_->Stop();
     if (translator_) translator_->Stop();
@@ -123,6 +125,7 @@ void AppRuntime::Teardown()
 void AppRuntime::AcceptChat(const ChatEntry& entry)
 {
     if (!alive_ || !panel_) return;
+    bool confirmedCompose = NoteComposeLogEntry(entry);
     CheckConfigReload();
 
     ChatEntry displayEntry = entry;
@@ -147,7 +150,7 @@ void AppRuntime::AcceptChat(const ChatEntry& entry)
     if (!TranslateEngine::ShouldTranslate(displayEntry.body)) {
         displayEntry.translated = displayEntry.body;
         panel_->Push(displayEntry);
-        LogValue(L"[ChatTranslator] skip non-translatable text: ", displayEntry.body);
+        LogValue(confirmedCompose ? L"[ChatTranslator] compose confirmed by chat log: " : L"[ChatTranslator] skip non-translatable text: ", displayEntry.body);
         return;
     }
 
@@ -235,7 +238,8 @@ void AppRuntime::LogValue(const std::wstring& prefix, const std::wstring& value)
     logger_(SCS_LOG_TYPE_message, msg.c_str());
 }
 
-static bool PasteTextToGameChat(const std::wstring& text);
+static bool SendTextToGameChat(const std::wstring& text);
+static std::wstring NormalizeComposeConfirmationText(const std::wstring& text);
 
 void AppRuntime::OnComposeSubmit(const std::wstring& text)
 {
@@ -257,26 +261,108 @@ void AppRuntime::OnComposeSubmit(const std::wstring& text)
                 translated = translator_->TranslateCompose(text);
             }
         }
-        FinishComposeSend(translated);
+        FinishComposeSend(text, translated);
         composeBusy_ = false;
     });
 }
 
-void AppRuntime::FinishComposeSend(const std::wstring& translated)
+void AppRuntime::FinishComposeSend(const std::wstring& original, const std::wstring& translated)
 {
     if (!alive_ || !panel_) return;
+
+    std::wstring originalTrimmed = text::Trim(original);
+    std::wstring translatedTrimmed = text::Trim(translated);
+    if (translatedTrimmed.empty() || translatedTrimmed == originalTrimmed || text::MostlyChinese(translatedTrimmed)) {
+        LogValue(L"[ChatTranslator] compose translation failed, not sending: ", originalTrimmed);
+        panel_->PostComposeStatus(L"Translation failed; not sent.");
+        return;
+    }
 
     if (panel_->IsVisible()) {
         ShowWindow(panel_->Window(), SW_HIDE);
     }
 
-    bool ok = PasteTextToGameChat(translated);
+    ArmComposeConfirmation(translatedTrimmed);
+    bool ok = SendTextToGameChat(translatedTrimmed);
+    bool confirmed = ok && WaitForComposeConfirmation(2500);
+    ClearComposeConfirmation();
+
     if (panel_->Window() && !panel_->IsVisible()) {
         ShowWindow(panel_->Window(), SW_SHOWNA);
         SetWindowPos(panel_->Window(), HWND_TOPMOST, 0, 0, 0, 0,
             SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
     }
-    panel_->PostComposeStatus(ok ? L"Pasted to game chat. Press Enter to send." : L"Send failed: game window or clipboard unavailable.");
+
+    if (!ok) {
+        LogValue(L"[ChatTranslator] compose send failed: ", translatedTrimmed);
+        panel_->PostComposeStatus(L"Send failed: game window or clipboard unavailable.");
+    } else if (confirmed) {
+        LogValue(L"[ChatTranslator] compose send confirmed: ", translatedTrimmed);
+        panel_->PostComposeStatus(L"Sent and confirmed by chat log.");
+    } else {
+        LogValue(L"[ChatTranslator] compose sent but not confirmed by chat log: ", translatedTrimmed);
+        panel_->PostComposeStatus(L"Sent, waiting for chat log confirmation timed out.");
+    }
+}
+
+void AppRuntime::ArmComposeConfirmation(const std::wstring& text)
+{
+    std::lock_guard<std::mutex> g(composeConfirmLock_);
+    pendingComposeText_ = NormalizeComposeConfirmationText(text);
+    pendingComposeActive_ = !pendingComposeText_.empty();
+    pendingComposeConfirmed_ = false;
+}
+
+void AppRuntime::ClearComposeConfirmation()
+{
+    std::lock_guard<std::mutex> g(composeConfirmLock_);
+    pendingComposeText_.clear();
+    pendingComposeActive_ = false;
+    pendingComposeConfirmed_ = false;
+}
+
+static std::wstring NormalizeComposeConfirmationText(const std::wstring& text)
+{
+    std::wstring trimmed = text::Trim(text);
+    std::wstring out;
+    out.reserve(trimmed.size());
+    bool spacing = false;
+    for (wchar_t ch : trimmed) {
+        if (iswspace(ch)) {
+            spacing = !out.empty();
+            continue;
+        }
+        if (spacing) {
+            out.push_back(L' ');
+            spacing = false;
+        }
+        out.push_back(ch);
+    }
+    return out;
+}
+
+bool AppRuntime::NoteComposeLogEntry(const ChatEntry& entry)
+{
+    if (entry.infoLine || entry.serviceLine) return false;
+    std::wstring body = NormalizeComposeConfirmationText(entry.body);
+    if (body.empty()) return false;
+
+    std::lock_guard<std::mutex> g(composeConfirmLock_);
+    if (!pendingComposeActive_ || pendingComposeConfirmed_) return false;
+    if (body != pendingComposeText_) return false;
+
+    pendingComposeConfirmed_ = true;
+    composeConfirmCv_.notify_all();
+    return true;
+}
+
+bool AppRuntime::WaitForComposeConfirmation(DWORD timeoutMs)
+{
+    std::unique_lock<std::mutex> g(composeConfirmLock_);
+    if (!pendingComposeActive_) return false;
+    return composeConfirmCv_.wait_for(g, std::chrono::milliseconds(timeoutMs), [this] {
+        return pendingComposeConfirmed_ || !pendingComposeActive_ || !alive_;
+    }) && pendingComposeConfirmed_;
 }
 
 static HWND FindGameWindow()
@@ -298,7 +384,100 @@ static HWND FindGameWindow()
     return ctx.result;
 }
 
-static bool PasteTextToGameChat(const std::wstring& text)
+static void PressKey(WORD vk, DWORD holdMs = 25)
+{
+    INPUT down = {};
+    down.type = INPUT_KEYBOARD;
+    down.ki.wVk = vk;
+    SendInput(1, &down, sizeof(INPUT));
+    Sleep(holdMs);
+
+    INPUT up = {};
+    up.type = INPUT_KEYBOARD;
+    up.ki.wVk = vk;
+    up.ki.dwFlags = KEYEVENTF_KEYUP;
+    SendInput(1, &up, sizeof(INPUT));
+}
+
+static void KeyDown(WORD vk)
+{
+    INPUT input = {};
+    input.type = INPUT_KEYBOARD;
+    input.ki.wVk = vk;
+    SendInput(1, &input, sizeof(INPUT));
+}
+
+static void KeyUp(WORD vk)
+{
+    INPUT input = {};
+    input.type = INPUT_KEYBOARD;
+    input.ki.wVk = vk;
+    input.ki.dwFlags = KEYEVENTF_KEYUP;
+    SendInput(1, &input, sizeof(INPUT));
+}
+
+static bool ActivateGameWindow(HWND gameWnd)
+{
+    if (!gameWnd) return false;
+
+    if (IsIconic(gameWnd)) ShowWindow(gameWnd, SW_RESTORE);
+    else ShowWindow(gameWnd, SW_SHOW);
+
+    DWORD currentThread = GetCurrentThreadId();
+    DWORD gameThread = GetWindowThreadProcessId(gameWnd, nullptr);
+    DWORD foregroundThread = GetWindowThreadProcessId(GetForegroundWindow(), nullptr);
+
+    if (foregroundThread && foregroundThread != currentThread) {
+        AttachThreadInput(foregroundThread, currentThread, TRUE);
+    }
+    if (gameThread && gameThread != currentThread) {
+        AttachThreadInput(gameThread, currentThread, TRUE);
+    }
+
+    BringWindowToTop(gameWnd);
+    SetForegroundWindow(gameWnd);
+    SetFocus(gameWnd);
+    SetActiveWindow(gameWnd);
+
+    Sleep(35);
+    if (GetForegroundWindow() != gameWnd) {
+        SetForegroundWindow(gameWnd);
+        BringWindowToTop(gameWnd);
+    }
+
+    if (gameThread && gameThread != currentThread) {
+        AttachThreadInput(gameThread, currentThread, FALSE);
+    }
+    if (foregroundThread && foregroundThread != currentThread) {
+        AttachThreadInput(foregroundThread, currentThread, FALSE);
+    }
+
+    Sleep(55);
+    return GetForegroundWindow() == gameWnd;
+}
+
+static void RestoreClipboardText(const std::wstring& previousText, bool hadText)
+{
+    if (!OpenClipboard(nullptr)) return;
+    EmptyClipboard();
+    if (hadText) {
+        size_t cb = (previousText.size() + 1) * sizeof(wchar_t);
+        HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, cb);
+        if (hMem) {
+            wchar_t* p = static_cast<wchar_t*>(GlobalLock(hMem));
+            if (p) {
+                memcpy(p, previousText.c_str(), cb);
+                GlobalUnlock(hMem);
+                if (!SetClipboardData(CF_UNICODETEXT, hMem)) GlobalFree(hMem);
+            } else {
+                GlobalFree(hMem);
+            }
+        }
+    }
+    CloseClipboard();
+}
+
+static bool SendTextToGameChat(const std::wstring& text)
 {
     if (text.empty()) return false;
     HWND gameWnd = FindGameWindow();
@@ -334,55 +513,30 @@ static bool PasteTextToGameChat(const std::wstring& text)
         }
         CloseClipboard();
     }
-    if (!ok) return false;
-
-    Sleep(250);
-    SetForegroundWindow(gameWnd);
-    Sleep(80);
-
-    auto keyDown = [](WORD vk) {
-        INPUT input = {};
-        input.type = INPUT_KEYBOARD;
-        input.ki.wVk = vk;
-        SendInput(1, &input, sizeof(INPUT));
-    };
-
-    auto keyUp = [](WORD vk) {
-        INPUT input = {};
-        input.type = INPUT_KEYBOARD;
-        input.ki.wVk = vk;
-        input.ki.dwFlags = KEYEVENTF_KEYUP;
-        SendInput(1, &input, sizeof(INPUT));
-    };
-    auto press = [&](WORD vk) { keyDown(vk); Sleep(25); keyUp(vk); };
-
-    press('Y');
-    Sleep(120);
-
-    keyDown(VK_CONTROL);
-    Sleep(25);
-    press('V');
-    Sleep(25);
-    keyUp(VK_CONTROL);
-    Sleep(80);
-
-    if (OpenClipboard(nullptr)) {
-        EmptyClipboard();
-        if (hadText) {
-            size_t cb = (previousText.size() + 1) * sizeof(wchar_t);
-            HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, cb);
-            if (hMem) {
-                wchar_t* p = static_cast<wchar_t*>(GlobalLock(hMem));
-                if (p) {
-                    memcpy(p, previousText.c_str(), cb);
-                    GlobalUnlock(hMem);
-                    if (!SetClipboardData(CF_UNICODETEXT, hMem)) GlobalFree(hMem);
-                } else {
-                    GlobalFree(hMem);
-                }
-            }
-        }
-        CloseClipboard();
+    if (!ok) {
+        RestoreClipboardText(previousText, hadText);
+        return false;
     }
+
+    Sleep(60);
+    if (!ActivateGameWindow(gameWnd)) {
+        RestoreClipboardText(previousText, hadText);
+        return false;
+    }
+
+    PressKey('Y', 18);
+    Sleep(70);
+
+    KeyDown(VK_CONTROL);
+    Sleep(10);
+    PressKey('V', 18);
+    Sleep(12);
+    KeyUp(VK_CONTROL);
+    Sleep(70);
+
+    PressKey(VK_RETURN, 18);
+    Sleep(30);
+
+    RestoreClipboardText(previousText, hadText);
     return true;
 }

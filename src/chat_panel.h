@@ -111,6 +111,7 @@ private:
     void StartComposeCaret();
     void StopComposeCaret();
     RECT ComposeCaretRect(HDC dc) const;
+    void UpdateImeCompositionWindow();
     LRESULT HandleImeStartComposition();
     LRESULT HandleImeComposition(WPARAM wp, LPARAM lp);
     LRESULT HandleImeEndComposition();

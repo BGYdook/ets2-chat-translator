@@ -938,7 +938,7 @@ void ChatPanel::Paint(HDC dc, RECT bounds)
 
         RECT textRc{ composeBoxRect_.left + 12, composeBoxRect_.top,
             composeBoxRect_.right - 12, composeBoxRect_.bottom };
-        if (!status.empty()) {
+        if (value.empty() && imeComp.empty() && !status.empty()) {
             DrawTextLine(dc, smallFont_, cCyan, status, textRc,
                 DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
         } else if (value.empty() && imeComp.empty()) {
@@ -1298,6 +1298,7 @@ void ChatPanel::SetComposeFocus(bool focused)
         composeCaretVisible_ = focused;
         if (focused) {
             composeCaretOn_ = true;
+            composeStatus_.clear();
         } else {
             composeCaretOn_ = false;
             composeImeComp_.clear();
@@ -1328,6 +1329,7 @@ bool ChatPanel::HandleComposeKey(UINT msg, WPARAM wp)
                 std::lock_guard<std::mutex> guard(lock_);
                 if (composeCursorPos_ > 0) --composeCursorPos_;
             }
+            UpdateImeCompositionWindow();
             RenderLayered();
             return true;
         }
@@ -1336,6 +1338,7 @@ bool ChatPanel::HandleComposeKey(UINT msg, WPARAM wp)
                 std::lock_guard<std::mutex> guard(lock_);
                 if (composeCursorPos_ < (int)composeInputText_.size()) ++composeCursorPos_;
             }
+            UpdateImeCompositionWindow();
             RenderLayered();
             return true;
         }
@@ -1344,6 +1347,7 @@ bool ChatPanel::HandleComposeKey(UINT msg, WPARAM wp)
                 std::lock_guard<std::mutex> guard(lock_);
                 composeCursorPos_ = 0;
             }
+            UpdateImeCompositionWindow();
             RenderLayered();
             return true;
         }
@@ -1352,6 +1356,7 @@ bool ChatPanel::HandleComposeKey(UINT msg, WPARAM wp)
                 std::lock_guard<std::mutex> guard(lock_);
                 composeCursorPos_ = (int)composeInputText_.size();
             }
+            UpdateImeCompositionWindow();
             RenderLayered();
             return true;
         }
@@ -1362,6 +1367,7 @@ bool ChatPanel::HandleComposeKey(UINT msg, WPARAM wp)
                     composeInputText_.erase(composeCursorPos_, 1);
                 }
             }
+            UpdateImeCompositionWindow();
             RenderLayered();
             return true;
         }
@@ -1373,6 +1379,7 @@ bool ChatPanel::HandleComposeKey(UINT msg, WPARAM wp)
                     --composeCursorPos_;
                 }
             }
+            UpdateImeCompositionWindow();
             RenderLayered();
             return true;
         }
@@ -1422,8 +1429,10 @@ bool ChatPanel::HandleComposeKey(UINT msg, WPARAM wp)
             if (composeInputText_.size() < 200) {
                 composeInputText_.insert(composeCursorPos_, 1, ch);
                 ++composeCursorPos_;
+                composeStatus_.clear();
             }
         }
+        UpdateImeCompositionWindow();
         RenderLayered();
         return true;
     }
@@ -1450,28 +1459,39 @@ void ChatPanel::StopComposeCaret()
 RECT ChatPanel::ComposeCaretRect(HDC dc) const
 {
     if (!composeFocused_) return{};
-    std::wstring before = composeInputText_.substr(0, composeCursorPos_);
+    std::wstring before;
+    {
+        std::lock_guard<std::mutex> guard(lock_);
+        int cursorPos = (std::max)(0, (std::min)(composeCursorPos_, (int)composeInputText_.size()));
+        before = composeInputText_.substr(0, cursorPos);
+    }
     int cursorX = TextWidth(dc, smallFont_, before);
     RECT textRc{ composeBoxRect_.left + 12, composeBoxRect_.top,
         composeBoxRect_.right - 12, composeBoxRect_.bottom };
-    return{ textRc.left + cursorX, textRc.top + 6,
-        textRc.left + cursorX + 1, textRc.bottom - 6 };
+    int x = (std::min)((int)textRc.right - 2, (int)textRc.left + cursorX);
+    return{ x, textRc.top + 6, x + 1, textRc.bottom - 6 };
+}
+
+void ChatPanel::UpdateImeCompositionWindow()
+{
+    HIMC himc = ImmGetContext(hwnd_);
+    if (himc) {
+        HDC dc = GetDC(hwnd_);
+        RECT caret = dc ? ComposeCaretRect(dc) : RECT{ composeBoxRect_.left + 12, composeBoxRect_.top + 6,
+            composeBoxRect_.left + 13, composeBoxRect_.bottom - 6 };
+        if (dc) ReleaseDC(hwnd_, dc);
+        COMPOSITIONFORM cf = {};
+        cf.dwStyle = CFS_POINT;
+        cf.ptCurrentPos.x = caret.left;
+        cf.ptCurrentPos.y = composeBoxRect_.top + 6;
+        ImmSetCompositionWindow(himc, &cf);
+        ImmReleaseContext(hwnd_, himc);
+    }
 }
 
 LRESULT ChatPanel::HandleImeStartComposition()
 {
-    HIMC himc = ImmGetContext(hwnd_);
-    if (himc) {
-        // Set composition window position near the caret
-        COMPOSITIONFORM cf = {};
-        RECT textRc{ composeBoxRect_.left + 12, composeBoxRect_.top,
-            composeBoxRect_.right - 12, composeBoxRect_.bottom };
-        cf.dwStyle = CFS_POINT;
-        cf.ptCurrentPos.x = textRc.left;
-        cf.ptCurrentPos.y = textRc.top;
-        ImmSetCompositionWindow(himc, &cf);
-        ImmReleaseContext(hwnd_, himc);
-    }
+    UpdateImeCompositionWindow();
     return TRUE;
 }
 
@@ -1505,11 +1525,13 @@ LRESULT ChatPanel::HandleImeComposition(WPARAM wp, LPARAM lp)
                 composeInputText_.insert(composeCursorPos_, result);
                 composeCursorPos_ += (int)result.size();
                 composeImeComp_.clear();
+                composeStatus_.clear();
             }
         } else {
             std::lock_guard<std::mutex> guard(lock_);
             composeImeComp_.clear();
         }
+        UpdateImeCompositionWindow();
         RenderLayered();
     }
 

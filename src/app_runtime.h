@@ -7,6 +7,7 @@
 #include "translate_engine.h"
 
 #include <atomic>
+#include <condition_variable>
 #include <mutex>
 #include <memory>
 #include <thread>
@@ -32,7 +33,11 @@ private:
     void Log(const char* message) const;
     void LogValue(const std::wstring& prefix, const std::wstring& value) const;
     void OnComposeSubmit(const std::wstring& text);
-    void FinishComposeSend(const std::wstring& translated);
+    void FinishComposeSend(const std::wstring& original, const std::wstring& translated);
+    void ArmComposeConfirmation(const std::wstring& text);
+    void ClearComposeConfirmation();
+    bool NoteComposeLogEntry(const ChatEntry& entry);
+    bool WaitForComposeConfirmation(DWORD timeoutMs);
 
     HINSTANCE dll_ = nullptr;
     scs_log_t logger_ = nullptr;
@@ -46,6 +51,11 @@ private:
     std::unique_ptr<TranslateEngine> translator_;
     std::thread composeThread_;
     std::atomic<bool> composeBusy_{ false };
+    std::mutex composeConfirmLock_;
+    std::condition_variable composeConfirmCv_;
+    std::wstring pendingComposeText_;
+    bool pendingComposeActive_ = false;
+    bool pendingComposeConfirmed_ = false;
 
     AppSettings settings_;
     std::wstring pluginFolder_;
