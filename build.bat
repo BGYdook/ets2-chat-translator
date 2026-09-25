@@ -101,7 +101,7 @@ cl.exe /nologo /EHsc /O2 /std:c++17 /utf-8 /W3 ^
     /Fo"build\\" ^
     src\dllmain.cpp src\app_runtime.cpp src\chat_panel.cpp src\chat_tailer.cpp ^
     src\translate_engine.cpp src\http_agent.cpp src\settings_store.cpp ^
-    src\text_codec.cpp src\win_paths.cpp ^
+    src\text_codec.cpp src\win_paths.cpp src\truckersmp_bridge.cpp ^
     /link /DLL /DEF:exports.def /MACHINE:X64 ^
     user32.lib gdi32.lib winhttp.lib shell32.lib advapi32.lib shlwapi.lib crypt32.lib
 
@@ -129,8 +129,13 @@ if %ERRORLEVEL% neq 0 (
 )
 
 echo [INFO] Building JavaScript/Electron manager app...
+rem Electron runtime and packaging tools download from GitHub by default, which often
+rem times out on restricted networks; point them at mirrors unless the user set one.
+if not defined ELECTRON_MIRROR set "ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/"
+if not defined ELECTRON_BUILDER_BINARIES_MIRROR set "ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/"
 pushd manager
-if exist "node_modules\electron" if exist "node_modules\electron-builder" (
+rem Reuse node_modules only when both the packager entry and the Electron binary exist.
+if exist "node_modules\.bin\electron-builder.cmd" if exist "node_modules\electron\dist\electron.exe" (
     echo [INFO] Reusing existing manager\node_modules.
 ) else (
     if exist "package-lock.json" (

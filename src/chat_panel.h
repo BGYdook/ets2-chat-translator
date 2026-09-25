@@ -2,6 +2,7 @@
 
 #include "core_types.h"
 
+#include <atomic>
 #include <functional>
 #include <mutex>
 #include <queue>
@@ -40,6 +41,8 @@ private:
 
     void Paint(HDC dc, RECT bounds);
     void RenderLayered();
+    void RequestRender();
+    void ReleaseRenderCache();
     void LayoutSearchBox(RECT bounds);
     void LayoutComposeBox(RECT bounds);
     void SetSearchText(std::wstring text);
@@ -66,6 +69,13 @@ private:
     HFONT font_ = nullptr;
     HFONT smallFont_ = nullptr;
     HFONT titleFont_ = nullptr;
+
+    HDC cacheDc_ = nullptr;
+    HBITMAP cacheBmp_ = nullptr;
+    HBITMAP cacheOldBmp_ = nullptr;
+    int cacheWidth_ = 0;
+    int cacheHeight_ = 0;
+    std::atomic<bool> renderPosted_{ false };
 
     mutable std::mutex lock_;
     std::vector<ChatEntry> entries_;

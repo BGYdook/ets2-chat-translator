@@ -18,6 +18,7 @@ set(PLUGIN_SOURCES
     src/settings_store.cpp
     src/text_codec.cpp
     src/win_paths.cpp
+    src/truckersmp_bridge.cpp
 )
 
 set(PLUGIN_HEADERS
@@ -31,6 +32,7 @@ set(PLUGIN_HEADERS
     src/core_types.h
     src/text_codec.h
     src/win_paths.h
+    src/truckersmp_bridge.h
 )
 
 add_library(${PROJECT_NAME} SHARED ${PLUGIN_SOURCES} ${PLUGIN_HEADERS} exports.def)
