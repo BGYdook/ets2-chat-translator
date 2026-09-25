@@ -27,8 +27,33 @@ const COLORREF cTrans = RGB(255, 215, 100);
 const COLORREF cWarn = RGB(239, 68, 68);
 const COLORREF cBlue = RGB(59, 130, 246);
 const COLORREF cCyan = RGB(34, 211, 238);
-constexpr int kTimeColumnW = 68;
+constexpr int kTimeColumnW = 58;
 constexpr UINT kMsgComposeStatus = WM_APP + 5;
+constexpr UINT kMsgRender = WM_APP + 6;
+constexpr UINT_PTR kComposeStatusTimerId = 2;
+
+struct RoleStyle
+{
+    PlayerRole role;
+    const wchar_t* label;
+    COLORREF fg;
+    COLORREF bg;
+};
+
+const RoleStyle kRoleStyles[] = {
+    { PlayerRole::Manager,       L"ADMIN", RGB(167, 139, 250), RGB(42, 35, 63) },
+    { PlayerRole::GameModerator, L"GM",    RGB(248, 113, 113), RGB(62, 28, 28) },
+    { PlayerRole::TeamMember,    L"TEAM",  RGB(96, 165, 250),  RGB(24, 41, 63) },
+    { PlayerRole::Patron,        L"VIP",   RGB(251, 191, 36),  RGB(63, 48, 9) },
+};
+
+const RoleStyle* RoleStyleFor(PlayerRole role)
+{
+    for (const auto& style : kRoleStyles) {
+        if (style.role == role) return &style;
+    }
+    return nullptr;
+}
 
 BYTE BackgroundAlpha(int opacity)
 {
@@ -196,6 +221,18 @@ std::wstring LowerCopy(std::wstring value)
     std::transform(value.begin(), value.end(), value.begin(),
         [](wchar_t ch) { return (wchar_t)towlower(ch); });
     return value;
+}
+
+bool IsNoticeMessage(const std::wstring& body)
+{
+    const std::wstring lower = LowerCopy(body);
+    static const wchar_t* const kKeys[] = {
+        L"banned", L"ban ", L"ban]", L"kicked", L"warn", L"report", L"punish", L"restrict"
+    };
+    for (const wchar_t* key : kKeys) {
+        if (lower.find(key) != std::wstring::npos) return true;
+    }
+    return false;
 }
 
 bool ParseHotkey(const std::wstring& hotkey, UINT& modifiers, UINT& vk)
@@ -368,7 +405,7 @@ bool ChatPanel::Open(HINSTANCE instance, const RuntimeConfig& runtime, const std
     wc.hInstance = instance_;
     wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
     wc.lpszClassName = kClass;
-    wc.style = CS_HREDRAW | CS_VREDRAW;
+    wc.style = 0;
     wc.hbrBackground = nullptr;
     RegisterClassExW(&wc);
 
@@ -396,11 +433,11 @@ void ChatPanel::ApplyRuntime(const RuntimeConfig& runtime)
     int nextFontSize = (std::max)(12, (std::min)(28, runtime.fontSize));
 
     HFONT nextFont = CreateFontW(nextFontSize, 0, 0, 0, FW_MEDIUM, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
-        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Microsoft YaHei UI");
+        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, L"Microsoft YaHei UI");
     HFONT nextSmallFont = CreateFontW((std::max)(11, nextFontSize - 2), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
-        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Microsoft YaHei UI");
+        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, L"Microsoft YaHei UI");
     HFONT nextTitleFont = CreateFontW(nextFontSize + 2, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
-        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Microsoft YaHei UI");
+        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, L"Microsoft YaHei UI");
 
     if (!nextFont || !nextSmallFont || !nextTitleFont) {
         if (nextFont) DeleteObject(nextFont);
@@ -430,7 +467,7 @@ void ChatPanel::ApplyRuntime(const RuntimeConfig& runtime)
         GetClientRect(hwnd_, &rc);
         LayoutSearchBox(rc);
         ScrollToEnd();
-        RenderLayered();
+        RequestRender();
     }
 }
 
@@ -445,6 +482,7 @@ void ChatPanel::Close()
         DestroyWindow(hwnd_);
         hwnd_ = nullptr;
     }
+    ReleaseRenderCache();
     if (font_) DeleteObject(font_);
     if (smallFont_) DeleteObject(smallFont_);
     if (titleFont_) DeleteObject(titleFont_);
@@ -520,7 +558,7 @@ void ChatPanel::Status(const std::wstring& text)
         std::lock_guard<std::mutex> guard(lock_);
         status_ = text;
     }
-    if (hwnd_) RenderLayered();
+    RequestRender();
 }
 
 void ChatPanel::ToggleVisible()
@@ -534,7 +572,7 @@ void ChatPanel::ToggleVisible()
     ShowWindow(hwnd_, SW_SHOWNA);
     SetWindowPos(hwnd_, HWND_TOPMOST, 0, 0, 0, 0,
         SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
-    RenderLayered();
+    RequestRender();
 }
 
 void ChatPanel::SaveWindowState() const
@@ -583,7 +621,7 @@ LRESULT CALLBACK ChatPanel::WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
         PAINTSTRUCT ps{};
         BeginPaint(hwnd, &ps);
         EndPaint(hwnd, &ps);
-        self->RenderLayered();
+        self->RequestRender();
         return 0;
     }
     case WM_NCHITTEST: {
@@ -603,11 +641,12 @@ LRESULT CALLBACK ChatPanel::WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
         int cx = LOWORD(lp);
         int cy = HIWORD(lp);
         HRGN rgn = CreateRoundRectRgn(0, 0, cx, cy, 16, 16);
-        SetWindowRgn(hwnd, rgn, TRUE);
+        // bRedraw 传 FALSE：统一交给下面的 RequestRender，避免一次 resize 触发两轮重绘。
+        SetWindowRgn(hwnd, rgn, FALSE);
         RECT rc{ 0, 0, cx, cy };
         self->LayoutSearchBox(rc);
         self->LayoutComposeBox(rc);
-        self->RenderLayered();
+        self->RequestRender();
         return 0;
     }
     case WM_EXITSIZEMOVE:
@@ -621,7 +660,7 @@ LRESULT CALLBACK ChatPanel::WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
     case WM_SETFOCUS:
         if (self->searchFocused_) self->searchCaretVisible_ = true;
         if (self->composeFocused_) self->composeCaretVisible_ = true;
-        self->RenderLayered();
+        self->RequestRender();
         return 0;
     case WM_KILLFOCUS:
         self->SetSearchFocus(false);
@@ -648,10 +687,24 @@ LRESULT CALLBACK ChatPanel::WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
     case WM_TIMER:
         if (wp == (WPARAM)self->composeTimerId_ && self->composeFocused_) {
             self->composeCaretOn_ = !self->composeCaretOn_;
-            self->RenderLayered();
+            self->RequestRender();
+            return 0;
+        }
+        if (wp == kComposeStatusTimerId) {
+            // 状态提示过期：自动清掉，避免底部长期挂着一条已经过时的结果。
+            KillTimer(hwnd, kComposeStatusTimerId);
+            {
+                std::lock_guard<std::mutex> guard(self->lock_);
+                self->composeStatus_.clear();
+            }
+            self->RequestRender();
             return 0;
         }
         break;
+    case kMsgRender:
+        self->renderPosted_.store(false);
+        self->RenderLayered();
+        return 0;
     case WM_APP + 1:
         self->ScrollToEnd();
         return 0;
@@ -725,33 +778,47 @@ void ChatPanel::DrainPending()
         }
         if (entries_.size() > 900) entries_.erase(entries_.begin(), entries_.begin() + 180);
     }
-    RenderLayered();
-    if (follow_) PostMessageW(hwnd_, WM_APP + 1, 0, 0);
+    if (follow_) {
+        ScrollToEnd();
+    } else {
+        RequestRender();
+    }
 }
 
 void ChatPanel::RenderLayered()
 {
     if (!hwnd_) return;
-    RECT rc{};
-    if (!GetClientRect(hwnd_, &rc)) return;
-    int width = rc.right - rc.left;
-    int height = rc.bottom - rc.top;
-    if (width <= 0 || height <= 0) return;
 
-    HDC screen = GetDC(nullptr);
-    HDC mem = CreateCompatibleDC(screen);
-    void* bits = nullptr;
-    HBITMAP bmp = CreateLayerBitmap(screen, width, height, &bits);
-    if (!bmp || !bits) {
-        if (bmp) DeleteObject(bmp);
-        DeleteDC(mem);
-        ReleaseDC(nullptr, screen);
+    if (uiThreadId_ != 0 && GetCurrentThreadId() != uiThreadId_) {
+        RequestRender();
         return;
     }
 
-    HBITMAP old = (HBITMAP)SelectObject(mem, bmp);
-    Paint(mem, RECT{ 0, 0, width, height });
-    PrepareLayeredBitmap(bmp, width, height, BackgroundAlpha(overlayOpacity_));
+    RECT rc{};
+    if (!GetClientRect(hwnd_, &rc)) return;
+    const int width = rc.right - rc.left;
+    const int height = rc.bottom - rc.top;
+    if (width <= 0 || height <= 0) return;
+
+    HDC screen = GetDC(nullptr);
+
+    if (!cacheDc_ || !cacheBmp_ || cacheWidth_ != width || cacheHeight_ != height) {
+        ReleaseRenderCache();
+        void* bits = nullptr;
+        cacheBmp_ = CreateLayerBitmap(screen, width, height, &bits);
+        cacheDc_ = CreateCompatibleDC(screen);
+        if (!cacheBmp_ || !cacheDc_ || !bits) {
+            ReleaseRenderCache();
+            ReleaseDC(nullptr, screen);
+            return;
+        }
+        cacheOldBmp_ = (HBITMAP)SelectObject(cacheDc_, cacheBmp_);
+        cacheWidth_ = width;
+        cacheHeight_ = height;
+    }
+
+    Paint(cacheDc_, RECT{ 0, 0, width, height });
+    PrepareLayeredBitmap(cacheBmp_, width, height, BackgroundAlpha(overlayOpacity_));
 
     POINT src{ 0, 0 };
     POINT pos{};
@@ -761,12 +828,38 @@ void ChatPanel::RenderLayered()
     pos.y = wr.top;
     SIZE size{ width, height };
     BLENDFUNCTION blend{ AC_SRC_OVER, 0, 255, AC_SRC_ALPHA };
-    UpdateLayeredWindow(hwnd_, screen, &pos, &size, mem, &src, 0, &blend, ULW_ALPHA);
+    UpdateLayeredWindow(hwnd_, screen, &pos, &size, cacheDc_, &src, 0, &blend, ULW_ALPHA);
 
-    SelectObject(mem, old);
-    DeleteObject(bmp);
-    DeleteDC(mem);
     ReleaseDC(nullptr, screen);
+}
+
+void ChatPanel::RequestRender()
+{
+    if (!hwnd_) return;
+    if (uiThreadId_ != 0 && GetCurrentThreadId() == uiThreadId_) {
+        RenderLayered();
+        return;
+    }
+    if (renderPosted_.exchange(true)) return;
+    PostMessageW(hwnd_, kMsgRender, 0, 0);
+}
+
+void ChatPanel::ReleaseRenderCache()
+{
+    if (cacheDc_ && cacheOldBmp_) {
+        SelectObject(cacheDc_, cacheOldBmp_);
+        cacheOldBmp_ = nullptr;
+    }
+    if (cacheBmp_) {
+        DeleteObject(cacheBmp_);
+        cacheBmp_ = nullptr;
+    }
+    if (cacheDc_) {
+        DeleteDC(cacheDc_);
+        cacheDc_ = nullptr;
+    }
+    cacheWidth_ = 0;
+    cacheHeight_ = 0;
 }
 
 void ChatPanel::Paint(HDC dc, RECT bounds)
@@ -866,14 +959,21 @@ void ChatPanel::Paint(HDC dc, RECT bounds)
             if (y > bounds.bottom) break;
             if (y + h >= area.top) {
                 if (e.serviceLine || e.infoLine) {
+                    const bool notice = e.serviceLine && IsNoticeMessage(e.body);
+                    const COLORREF cardBg = e.infoLine ? RGB(20, 34, 47)
+                        : (notice ? RGB(46, 32, 22) : RGB(19, 24, 33));
+                    const COLORREF cardEdge = e.infoLine ? RGB(38, 70, 92)
+                        : (notice ? RGB(110, 72, 34) : RGB(34, 43, 57));
+                    const COLORREF textColor = e.infoLine ? RGB(125, 211, 252)
+                        : (notice ? RGB(251, 191, 36) : RGB(136, 149, 173));
                     RECT card{ left, y + 1, right, y + h - 3 };
-                    RoundFill(dc, card, 7, e.infoLine ? RGB(20, 34, 47) : RGB(44, 26, 32));
-                    StrokeRound(dc, card, 7, e.infoLine ? RGB(38, 70, 92) : RGB(82, 42, 50));
+                    RoundFill(dc, card, 7, cardBg);
+                    StrokeRound(dc, card, 7, cardEdge);
                     RECT r{ card.left + 10, card.top + 4, card.right - 10, card.bottom - 4 };
                     if (e.infoLine) {
-                        DrawWrappedText(dc, smallFont_, RGB(125, 211, 252), L"[" + e.time + L"] " + e.body, r, 2, subRowH_);
+                        DrawWrappedText(dc, smallFont_, textColor, L"[" + e.time + L"] " + e.body, r, 2, subRowH_);
                     } else {
-                        DrawTextLine(dc, smallFont_, cWarn, L"[" + e.time + L"] " + e.body, r,
+                        DrawTextLine(dc, smallFont_, textColor, L"[" + e.time + L"] " + e.body, r,
                             DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
                     }
                 } else {
@@ -889,6 +989,20 @@ void ChatPanel::Paint(HDC dc, RECT bounds)
                     int contentRight = card.right - 12;
                     int lineTop = card.top + 6;
                     if (!e.author.empty()) {
+                        if (const RoleStyle* style = RoleStyleFor(e.role)) {
+                            const std::wstring label = style->label;
+                            const int badgeW = TextWidth(dc, smallFont_, label) + 12;
+                            RECT badgeRc{ contentX, lineTop + 2,
+                                contentX + badgeW, lineTop + 2 + subRowH_ - 5 };
+                            RoundFill(dc, badgeRc, 3, style->bg);
+                            DrawTextLine(dc, smallFont_, style->fg, label,
+                                badgeRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+                            contentX += badgeW + 6;
+                            if (contentX > contentRight - 120) {
+                                contentX = baseContentX;
+                                lineTop += subRowH_ - 4;
+                            }
+                        }
                         std::wstring name = e.author + L":";
                         int nameWidth = TextWidth(dc, smallFont_, name);
                         RECT nameRc{ contentX, lineTop + 1, contentRight, lineTop + 1 + subRowH_ };
@@ -1066,7 +1180,6 @@ void ChatPanel::SetSearchText(std::wstring text)
         searchText_ = std::move(lowered);
     }
     ScrollToEnd();
-    RenderLayered();
 }
 
 void ChatPanel::SetSearchFocus(bool focused)
@@ -1078,7 +1191,7 @@ void ChatPanel::SetSearchFocus(bool focused)
         searchFocused_ = focused;
         searchCaretVisible_ = focused;
     }
-    if (changed) RenderLayered();
+    if (changed) RequestRender();
 }
 
 bool ChatPanel::SearchBoxHit(int x, int y) const
@@ -1169,6 +1282,9 @@ int ChatPanel::EntryHeight(HDC dc, const ChatEntry& entry) const
     int h = 13;
     if (!entry.author.empty()) {
         int nameWidth = TextWidth(dc, smallFont_, entry.author + L":");
+        if (const RoleStyle* style = RoleStyleFor(entry.role)) {
+            nameWidth += TextWidth(dc, smallFont_, style->label) + 18;
+        }
         if (nameWidth + 6 > textWidth - 120) h += subRowH_ - 4;
     }
     const std::wstring primary = entry.translated.empty() ? L"翻译中..." : entry.translated;
@@ -1215,7 +1331,7 @@ void ChatPanel::ScrollToEnd()
     ReleaseDC(hwnd_, dc);
     follow_ = true;
     ResizeScroll();
-    RenderLayered();
+    RequestRender();
 }
 
 void ChatPanel::OnWheel(int delta)
@@ -1238,7 +1354,7 @@ void ChatPanel::OnWheel(int delta)
     }
     ReleaseDC(hwnd_, dc);
     ResizeScroll();
-    RenderLayered();
+    RequestRender();
 }
 
 void ChatPanel::OnClick(int x, int y)
@@ -1275,7 +1391,14 @@ void ChatPanel::SetComposeStatus(const std::wstring& text)
         std::lock_guard<std::mutex> guard(lock_);
         composeStatus_ = text;
     }
-    if (hwnd_) RenderLayered();
+    if (hwnd_) {
+        if (text.empty()) {
+            KillTimer(hwnd_, kComposeStatusTimerId);
+        } else {
+            SetTimer(hwnd_, kComposeStatusTimerId, 6000, nullptr);
+        }
+    }
+    RequestRender();
 }
 
 void ChatPanel::PostComposeStatus(std::wstring text)
@@ -1309,7 +1432,7 @@ void ChatPanel::SetComposeFocus(bool focused)
     } else {
         StopComposeCaret();
     }
-    if (changed) RenderLayered();
+    if (changed) RequestRender();
 }
 
 bool ChatPanel::ComposeBoxHit(int x, int y) const

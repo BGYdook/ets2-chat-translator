@@ -2,6 +2,15 @@
 
 #include <string>
 
+enum class PlayerRole
+{
+    None = 0,
+    Patron,
+    TeamMember,
+    GameModerator,
+    Manager,
+};
+
 struct ChatEntry
 {
     unsigned int id = 0;
@@ -13,6 +22,7 @@ struct ChatEntry
     bool serviceLine = false;
     bool infoLine = false;
     bool searchOnly = false;
+    PlayerRole role = PlayerRole::None;
 };
 
 struct RuntimeConfig

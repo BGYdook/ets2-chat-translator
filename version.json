@@ -1,11 +1,11 @@
 {
-  "version": "0.3.18",
-  "tag_name": "v0.3.18",
-  "name": "v0.3.18",
-  "download_url": "https://github.com/Seven-TMP/ets2-chat-translator/releases/download/v0.3.18/ETS2-Chat-Translator-Manager-Setup-0.3.18.exe",
-  "asset_name": "ETS2-Chat-Translator-Manager-Setup-0.3.18.exe",
-  "size": 82839628,
-  "sha256": "e6c984852eae057a6f0f797688df62c9ef3e551f55934292cecbe546ba31294f",
-  "html_url": "https://github.com/Seven-TMP/ets2-chat-translator/releases/tag/v0.3.18",
-  "notes": "### v0.3.18\n\n- 新增悬浮窗中文输入框，可将中文翻译为英文并自动发送到游戏公屏。\n- 优化发送流程，增加忙碌状态、剪贴板恢复、游戏窗口校验和聊天日志确认。\n- 注意：中文翻译英文自动发送公屏功能暂未实机充分测试，如有问题请提交 Issues。\n- 管理器底部新增作者信息。\n- 同步 README、DLL 日志版本和管理器版本。"
+  "version": "0.3.19",
+  "tag_name": "v0.3.19",
+  "name": "v0.3.19",
+  "download_url": "https://github.com/Seven-TMP/ets2-chat-translator/releases/download/v0.3.19/ETS2-Chat-Translator-Manager-Setup-0.3.19.exe",
+  "asset_name": "ETS2-Chat-Translator-Manager-Setup-0.3.19.exe",
+  "size": 82853246,
+  "sha256": "d5fee76881ec25e659b5c3b6fe5d5fee524f61f636ed7e7156116183c46b3270",
+  "html_url": "https://github.com/Seven-TMP/ets2-chat-translator/releases/tag/v0.3.19",
+  "notes": "### v0.3.19\n\n- 适配欧卡 1.61：补齐 SCS Telemetry SDK 版本定义（1.00~1.14），版本协商改为按主版本匹配，游戏更新后插件可正常加载。\n- 接入 TruckersMP 官方 Client SDK：同一个 DLL 同时实现 SCS Telemetry 与 TruckersMP SDK 接口，可读取附近玩家身份。\n- 新增身份标注：聊天中为管理员、团队成员、赞助者显示 ADMIN / GM / TEAM / VIP 徽章，兼容 [TAG] 前缀与大小写、空格差异。\n- 修复发送消息定位错误：此前按键会打到悬浮窗自身导致“发送超时”，现在排除悬浮窗并定位游戏主窗口，同时记录实际发送目标窗口。\n- 修复悬浮窗闪烁：渲染统一转交 UI 线程并合并重绘请求、复用位图缓存，字体改为灰度抗锯齿。\n- 优化中译英发送：不再隐藏/重显悬浮窗，改为轮询等待游戏窗口激活，剪贴板自动还原，结果提示 6 秒后自动消失。\n- UI 调整：连接/服务信息不再使用刺眼的红色卡片，状态栏精简。"
 }

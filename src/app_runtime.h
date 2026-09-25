@@ -8,6 +8,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <functional>
 #include <mutex>
 #include <memory>
 #include <thread>
@@ -21,6 +22,9 @@ public:
 
     bool Start();
     void Stop();
+
+    using RoleResolver = std::function<PlayerRole(const std::wstring&)>;
+    void SetRoleResolver(RoleResolver fn) { roleResolver_ = std::move(fn); }
 
 private:
     void UiThread();
@@ -64,4 +68,5 @@ private:
     std::wstring logFolder_;
     FILETIME configWriteTime_{};
     std::mutex translatorLock_;
+    RoleResolver roleResolver_;
 };

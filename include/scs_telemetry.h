@@ -49,9 +49,14 @@ const scs_log_type_t SCS_LOG_TYPE_error   = 2;
 #define SCS_GET_MAJOR_VERSION(v)       (((v) >> 16) & 0xffff)
 #define SCS_GET_MINOR_VERSION(v)       ((v) & 0xffff)
 
-#define SCS_TELEMETRY_VERSION_1_00     SCS_MAKE_VERSION(1, 0)
-#define SCS_TELEMETRY_VERSION_1_01     SCS_MAKE_VERSION(1, 1)
-#define SCS_TELEMETRY_VERSION_CURRENT  SCS_TELEMETRY_VERSION_1_01
+#define SCS_TELEMETRY_VERSION_1_00     SCS_MAKE_VERSION(1, 0)   // ETS2/ATS 1.35
+#define SCS_TELEMETRY_VERSION_1_01     SCS_MAKE_VERSION(1, 1)   // 新增 s64 类型与 gameplay events
+#define SCS_TELEMETRY_VERSION_1_10     SCS_MAKE_VERSION(1, 10)  // 新增 channel/event 注册 API
+#define SCS_TELEMETRY_VERSION_1_11     SCS_MAKE_VERSION(1, 11)
+#define SCS_TELEMETRY_VERSION_1_12     SCS_MAKE_VERSION(1, 12)
+#define SCS_TELEMETRY_VERSION_1_13     SCS_MAKE_VERSION(1, 13)
+#define SCS_TELEMETRY_VERSION_1_14     SCS_MAKE_VERSION(1, 14)
+#define SCS_TELEMETRY_VERSION_CURRENT  SCS_TELEMETRY_VERSION_1_14
 
 // ======================== Function Pointer Types ========================
 typedef SCSAPI_VOID_FPTR(scs_log_t)(const scs_log_type_t type, const scs_string_t message);

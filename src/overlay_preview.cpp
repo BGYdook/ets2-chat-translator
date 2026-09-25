@@ -6,13 +6,15 @@
 
 namespace
 {
-ChatEntry Entry(const wchar_t* time, const wchar_t* author, const wchar_t* body, const wchar_t* translated)
+ChatEntry Entry(const wchar_t* time, const wchar_t* author, const wchar_t* body,
+    const wchar_t* translated, PlayerRole role = PlayerRole::None)
 {
     ChatEntry e;
     e.time = time;
     e.author = author;
     e.body = body;
     e.translated = translated;
+    e.role = role;
     return e;
 }
 
@@ -46,6 +48,14 @@ DWORD WINAPI FeedThread(void* param)
     panel->Push(Service(L"14:34:10", L"[System] Player TAHA_27 (700) has been banned."));
     panel->Push(Entry(L"14:34:11", L"YGMK (729)", L"不要变卖", L"不要变卖"));
     panel->Push(Entry(L"14:34:12", L"Defne (274)", L"sry broooo", L"抱歉，兄弟"));
+    panel->Push(Entry(L"14:34:14", L"Wezy", L"please slow down in the city",
+        L"在城里请减速", PlayerRole::GameModerator));
+    panel->Push(Entry(L"14:34:16", L"TruckersMP Management", L"convoy starts in 10 minutes",
+        L"车队 10 分钟后出发", PlayerRole::Manager));
+    panel->Push(Entry(L"14:34:18", L"Support Team", L"welcome to TruckersMP!",
+        L"欢迎来到 TruckersMP！", PlayerRole::TeamMember));
+    panel->Push(Entry(L"14:34:19", L"BigSupporter", L"nice paint job!",
+        L"涂装不错！", PlayerRole::Patron));
     panel->Push(Entry(L"14:34:13", L"User_6116755 (509)", L"？？？？、", L"？？？？、"));
     panel->Push(Entry(L"14:34:20", L"Prime Logistics Averka", L"ty mate", L"谢谢，伙计"));
     panel->Push(Info(L"14:34:39", L"日志信息：User_6116755  临时编号 509  TMPID 6116755  SteamID64 76561198757795883"));
